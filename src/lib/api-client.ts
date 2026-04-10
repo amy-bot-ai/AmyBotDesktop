@@ -161,11 +161,25 @@ async function resolveGatewayPort(): Promise<number> {
 }
 
 export async function resolveDefaultGatewayHttpBaseUrl(): Promise<string> {
+  const remoteUrl = await invokeViaIpc<string | null>('settings:get', ['gatewayRemoteUrl']);
+  if (remoteUrl) {
+    try {
+      const parsed = new URL(remoteUrl);
+      const protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+      return `${protocol}//${parsed.host}`;
+    } catch {
+      return remoteUrl;
+    }
+  }
   const port = await resolveGatewayPort();
   return `http://127.0.0.1:${port}`;
 }
 
 export async function resolveDefaultGatewayWsUrl(): Promise<string> {
+  const remoteUrl = await invokeViaIpc<string | null>('settings:get', ['gatewayRemoteUrl']);
+  if (remoteUrl) {
+    return remoteUrl.endsWith('/ws') ? remoteUrl : remoteUrl.replace(/\/$/, '') + '/ws';
+  }
   const port = await resolveGatewayPort();
   return `ws://127.0.0.1:${port}/ws`;
 }

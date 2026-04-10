@@ -1,0 +1,152 @@
+{
+    "steps": {
+        "welcome": {
+            "title": "Chào mừng đến AmyBot",
+            "description": "Trợ lý AI của bạn đã sẵn sàng để cấu hình"
+        },
+        "runtime": {
+            "title": "Kiểm tra môi trường",
+            "description": "Xác minh yêu cầu hệ thống"
+        },
+        "provider": {
+            "title": "Nhà cung cấp AI",
+            "description": "Cấu hình dịch vụ AI"
+        },
+        "channel": {
+            "title": "Kết nối kênh",
+            "description": "Kết nối nền tảng nhắn tin (tùy chọn)"
+        },
+        "installing": {
+            "title": "Đang thiết lập",
+            "description": "Cài đặt các thành phần thiết yếu"
+        },
+        "complete": {
+            "title": "Hoàn tất!",
+            "description": "AmyBot đã sẵn sàng sử dụng"
+        }
+    },
+    "welcome": {
+        "title": "Chào mừng đến AmyBot",
+        "description": "AmyBot là giao diện đồ họa cho OpenClaw, giúp dễ dàng sử dụng trợ lý AI trên các nền tảng nhắn tin yêu thích của bạn.",
+        "features": {
+            "noCommand": "Không cần dòng lệnh",
+            "modernUI": "Giao diện hiện đại, đẹp mắt",
+            "bundles": "Gói kỹ năng được cài đặt sẵn",
+            "crossPlatform": "Hỗ trợ đa nền tảng"
+        }
+    },
+    "runtime": {
+        "title": "Đang kiểm tra môi trường",
+        "viewLogs": "Xem nhật ký",
+        "recheck": "Kiểm tra lại",
+        "nodejs": "Node.js Runtime",
+        "openclaw": "Gói OpenClaw",
+        "gateway": "Dịch vụ Cổng",
+        "startGateway": "Khởi động Cổng",
+        "status": {
+            "checking": "Đang kiểm tra...",
+            "success": "Node.js khả dụng",
+            "error": "Thất bại",
+            "gatewayRunning": "Đang chạy trên cổng {{port}}",
+            "packageReady": "Gói OpenClaw sẵn sàng"
+        },
+        "issue": {
+            "title": "Phát hiện vấn đề môi trường",
+            "desc": "Vui lòng đảm bảo OpenClaw được cài đặt đúng. Kiểm tra nhật ký để biết chi tiết."
+        },
+        "logs": {
+            "title": "Nhật ký ứng dụng",
+            "openFolder": "Mở thư mục nhật ký",
+            "close": "Đóng",
+            "noLogs": "(Chưa có nhật ký nào)"
+        }
+    },
+    "provider": {
+        "label": "Nhà cung cấp mô hình",
+        "selectPlaceholder": "Chọn nhà cung cấp...",
+        "baseUrl": "URL cơ sở",
+        "modelId": "ID mô hình",
+        "modelIdDesc": "Mã định danh mô hình từ nhà cung cấp (vd: deepseek-ai/DeepSeek-V3)",
+        "codePlanPreset": "Cài đặt sẵn Code Plan",
+        "codePlanMode": "Code Plan",
+        "useCodePlanPreset": "Sử dụng cài đặt sẵn Ark Code Plan",
+        "codePlanPresetDesc": "Code Plan sử dụng https://ark.cn-beijing.volces.com/api/coding/v3 và mô hình ark-code-latest. Không dùng /api/v3 cho lưu lượng Code Plan.",
+        "codePlanDoc": "Tài liệu Code Plan",
+        "protocol": "Giao thức",
+        "protocols": {
+            "openaiCompletions": "OpenAI Completions",
+            "openaiResponses": "OpenAI Responses",
+            "anthropic": "Tương thích Anthropic"
+        },
+        "apiKey": "Khóa API",
+        "save": "Lưu",
+        "validateSave": "Xác thực & Lưu",
+        "valid": "Cấu hình nhà cung cấp thành công",
+        "invalid": "Khóa API không hợp lệ",
+        "storedLocally": "Khóa API của bạn được lưu cục bộ trên máy."
+    },
+    "channel": {
+        "title": "Kết nối kênh nhắn tin",
+        "subtitle": "Chọn nền tảng để kết nối trợ lý AI. Bạn có thể thêm kênh khác sau trong Cài đặt.",
+        "configure": "Cấu hình {{name}}",
+        "howTo": "Cách kết nối:",
+        "viewDocs": "Xem tài liệu",
+        "validationError": "Xác thực thất bại",
+        "connected": "{{name}} đã kết nối",
+        "connectedDesc": "Kênh đã được cấu hình. Nó sẽ kết nối khi Cổng khởi động.",
+        "configureAnother": "Cấu hình kênh khác"
+    },
+    "installing": {
+        "title": "Đang cài đặt các thành phần thiết yếu",
+        "subtitle": "Thiết lập các công cụ cần thiết để vận hành trợ lý AI",
+        "progress": "Tiến trình",
+        "status": {
+            "pending": "Chờ xử lý",
+            "installing": "Đang cài đặt...",
+            "installed": "Đã cài đặt",
+            "failed": "Thất bại"
+        },
+        "error": "Lỗi thiết lập:",
+        "restart": "Thử khởi động lại ứng dụng",
+        "wait": "Quá trình này có thể mất vài phút...",
+        "skip": "Bỏ qua bước này"
+    },
+    "complete": {
+        "title": "Thiết lập hoàn tất!",
+        "subtitle": "AmyBot đã được cấu hình và sẵn sàng sử dụng. Bạn có thể bắt đầu trò chuyện với trợ lý AI.",
+        "provider": "Nhà cung cấp AI",
+        "components": "Thành phần",
+        "gateway": "Cổng",
+        "running": "Đang chạy",
+        "footer": "Bạn có thể tùy chỉnh kỹ năng và kết nối kênh trong Cài đặt"
+    },
+    "nav": {
+        "next": "Tiếp theo",
+        "back": "Quay lại",
+        "skipStep": "Bỏ qua bước này",
+        "skipSetup": "Bỏ qua thiết lập",
+        "getStarted": "Bắt đầu"
+    },
+    "defaultSkills": {
+        "opencode": {
+            "name": "OpenCode",
+            "description": "Backend trợ lý lập trình AI"
+        },
+        "python-env": {
+            "name": "Môi trường Python",
+            "description": "Python runtime cho kỹ năng"
+        },
+        "code-assist": {
+            "name": "Hỗ trợ lập trình",
+            "description": "Phân tích mã và gợi ý"
+        },
+        "file-tools": {
+            "name": "Công cụ tệp",
+            "description": "Thao tác và quản lý tệp"
+        },
+        "terminal": {
+            "name": "Terminal",
+            "description": "Thực thi lệnh shell"
+        }
+    }
+}

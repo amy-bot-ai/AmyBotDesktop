@@ -13,6 +13,13 @@ export async function handleGatewayRoutes(
 ): Promise<boolean> {
   if (url.pathname === '/api/app/gateway-info' && req.method === 'GET') {
     const status = ctx.gatewayManager.getStatus();
+    const remoteUrl = await getSetting('gatewayRemoteUrl');
+    if (remoteUrl) {
+      const token = await getSetting('gatewayRemoteToken') || await getSetting('gatewayToken');
+      const wsUrl = remoteUrl.endsWith('/ws') ? remoteUrl : remoteUrl.replace(/\/$/, '') + '/ws';
+      sendJson(res, 200, { wsUrl, token, port: 0, isRemote: true });
+      return true;
+    }
     const token = await getSetting('gatewayToken');
     const port = status.port || PORTS.OPENCLAW_GATEWAY;
     sendJson(res, 200, {
@@ -66,6 +73,17 @@ export async function handleGatewayRoutes(
 
   if (url.pathname === '/api/gateway/control-ui' && req.method === 'GET') {
     try {
+      const remoteUrl = await getSetting('gatewayRemoteUrl');
+      if (remoteUrl) {
+        const token = await getSetting('gatewayRemoteToken') || await getSetting('gatewayToken');
+        const parsed = new URL(remoteUrl);
+        const protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+        const baseUrl = `${protocol}//${parsed.host}`;
+        const urlObj = new URL(baseUrl);
+        if (token) urlObj.hash = new URLSearchParams({ token }).toString();
+        sendJson(res, 200, { success: true, url: urlObj.toString(), token, port: 0 });
+        return true;
+      }
       const status = ctx.gatewayManager.getStatus();
       const token = await getSetting('gatewayToken');
       const port = status.port || PORTS.OPENCLAW_GATEWAY;

@@ -15,6 +15,8 @@
         "refresh": "Обновить чат",
         "showThinking": "Показать размышления",
         "hideThinking": "Скрыть размышления",
+        "showGraph": "Показать граф выполнения",
+        "hideGraph": "Скрыть граф выполнения",
         "currentAgent": "Общение с {{agent}}"
     },
     "taskPanel": {
@@ -58,7 +60,7 @@
         "send": "Отправить",
         "stop": "Остановить",
         "gatewayConnected": "подключён",
-        "gatewayStatus": "шлюз {{state}} | порт: {{port}} {{pid}}",
+        "gatewayStatus": "шлюз {{state}}",
         "retryFailedAttachments": "Повторить неудавшиеся вложения"
     },
     "historyBuckets": {

@@ -3,6 +3,7 @@
  * Application configuration
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Sun,
   Moon,
@@ -37,6 +38,9 @@ import {
   type UiTelemetryEntry,
 } from '@/lib/telemetry';
 import { useTranslation } from 'react-i18next';
+import { Models } from '@/pages/Models';
+import { Skills } from '@/pages/Skills';
+import { Channels } from '@/pages/Channels';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { hostApiFetch } from '@/lib/host-api';
 import { cn } from '@/lib/utils';
@@ -47,7 +51,15 @@ type ControlUiInfo = {
 };
 
 export function Settings() {
-  const { t } = useTranslation('settings');
+  const { t } = useTranslation(['settings', 'common']);
+  const location = useLocation();
+  const activeTab = location.pathname.startsWith('/settings/models')
+    ? 'models'
+    : location.pathname.startsWith('/settings/skills')
+      ? 'skills'
+      : location.pathname.startsWith('/settings/channels')
+        ? 'channels'
+        : 'general';
   const {
     theme,
     setTheme,
@@ -57,6 +69,8 @@ export function Settings() {
     setLaunchAtStartup,
     gatewayAutoStart,
     setGatewayAutoStart,
+    gatewayRemoteUrl,
+    gatewayRemoteToken,
     proxyEnabled,
     proxyServer,
     proxyHttpServer,
@@ -85,6 +99,9 @@ export function Settings() {
   const [controlUiInfo, setControlUiInfo] = useState<ControlUiInfo | null>(null);
   const [openclawCliCommand, setOpenclawCliCommand] = useState('');
   const [openclawCliError, setOpenclawCliError] = useState<string | null>(null);
+  const [remoteUrlDraft, setRemoteUrlDraft] = useState('');
+  const [remoteTokenDraft, setRemoteTokenDraft] = useState('');
+  const [savingRemoteGateway, setSavingRemoteGateway] = useState(false);
   const [proxyServerDraft, setProxyServerDraft] = useState('');
   const [proxyHttpServerDraft, setProxyHttpServerDraft] = useState('');
   const [proxyHttpsServerDraft, setProxyHttpsServerDraft] = useState('');
@@ -300,6 +317,14 @@ export function Settings() {
   }, [devModeUnlocked]);
 
   useEffect(() => {
+    setRemoteUrlDraft(gatewayRemoteUrl);
+  }, [gatewayRemoteUrl]);
+
+  useEffect(() => {
+    setRemoteTokenDraft(gatewayRemoteToken);
+  }, [gatewayRemoteToken]);
+
+  useEffect(() => {
     setProxyEnabledDraft(proxyEnabled);
   }, [proxyEnabled]);
 
@@ -346,6 +371,24 @@ export function Settings() {
     proxyServer,
     proxyServerDraft,
   ]);
+
+  const handleSaveRemoteGateway = async () => {
+    setSavingRemoteGateway(true);
+    try {
+      await hostApiFetch('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          gatewayRemoteUrl: remoteUrlDraft.trim(),
+          gatewayRemoteToken: remoteTokenDraft.trim(),
+        }),
+      });
+      toast.success('Remote gateway settings saved. Reconnecting...');
+      setTimeout(() => window.location.reload(), 800);
+    } catch (error) {
+      toast.error(`Failed to save remote gateway: ${toUserMessage(error)}`);
+      setSavingRemoteGateway(false);
+    }
+  };
 
   const handleSaveProxySettings = async () => {
     setSavingProxy(true);
@@ -472,27 +515,17 @@ export function Settings() {
   };
 
   return (
-    <div data-testid="settings-page" className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
-      <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
-
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
-          <div>
-            <h1 className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              {t('title')}
-            </h1>
-            <p className="text-[17px] text-foreground/70 font-medium">
-              {t('subtitle')}
-            </p>
-          </div>
-        </div>
+    <div data-testid="settings-page" className="flex h-full w-full flex-col overflow-hidden">
+      <div className="flex h-full min-h-0 flex-col">
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2 space-y-12">
+        {activeTab === 'general' && (
+        <div className="flex flex-col h-full p-8">
+        <div className="flex-1 overflow-y-auto pr-2 pb-16 min-h-0 -mr-2 space-y-12">
 
           {/* Appearance */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
               {t('appearance.title')}
             </h2>
             <div className="space-y-6">
@@ -559,40 +592,10 @@ export function Settings() {
 
           {/* Gateway */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
               {t('gateway.title')}
             </h2>
             <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <Label className="text-[15px] font-medium text-foreground">{t('gateway.status')}</Label>
-                  <p className="text-[13px] text-muted-foreground mt-1">
-                    {t('gateway.port')}: {gatewayStatus.port}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium border",
-                    gatewayStatus.state === 'running' ? "bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20" :
-                      gatewayStatus.state === 'error' ? "bg-red-500/10 text-red-600 dark:text-red-500 border-red-500/20" :
-                        "bg-black/5 dark:bg-white/5 text-muted-foreground border-transparent"
-                  )}>
-                    <div className={cn("w-1.5 h-1.5 rounded-full",
-                      gatewayStatus.state === 'running' ? "bg-green-500" :
-                        gatewayStatus.state === 'error' ? "bg-red-500" : "bg-muted-foreground"
-                    )} />
-                    {gatewayStatus.state}
-                  </div>
-                  <Button variant="outline" size="sm" onClick={restartGateway} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
-                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                    {t('common:actions.restart')}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleShowLogs} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
-                    <FileText className="h-3.5 w-3.5 mr-1.5" />
-                    {t('gateway.logs')}
-                  </Button>
-                </div>
-              </div>
 
               {showLogs && (
                 <div className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
@@ -625,6 +628,68 @@ export function Settings() {
                   checked={gatewayAutoStart}
                   onCheckedChange={setGatewayAutoStart}
                 />
+              </div>
+
+              {/* Remote Gateway */}
+              <div className="space-y-4 p-4 rounded-2xl border border-black/8 dark:border-white/8 bg-black/[0.02] dark:bg-white/[0.02]">
+                <div>
+                  <Label className="text-[15px] font-medium text-foreground">Remote Gateway</Label>
+                  <p className="text-[13px] text-muted-foreground mt-1">
+                    Connect to a remote OpenClaw gateway instead of the local one (e.g. your VPS). Leave blank to use local.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-[13px] text-muted-foreground mb-1.5 block">Gateway URL</Label>
+                    <Input
+                      placeholder="wss://oc-staging.amybot.ai"
+                      value={remoteUrlDraft}
+                      onChange={(e) => setRemoteUrlDraft(e.target.value)}
+                      className="h-9 text-[13px] rounded-xl border-black/10 dark:border-white/10 bg-transparent"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[13px] text-muted-foreground mb-1.5 block">Gateway Token</Label>
+                    <Input
+                      type="password"
+                      placeholder="Remote gateway auth token"
+                      value={remoteTokenDraft}
+                      onChange={(e) => setRemoteTokenDraft(e.target.value)}
+                      className="h-9 text-[13px] rounded-xl border-black/10 dark:border-white/10 bg-transparent"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleSaveRemoteGateway}
+                    disabled={savingRemoteGateway}
+                    className="rounded-xl h-9 px-4 text-[13px] bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-2${savingRemoteGateway ? ' animate-spin' : ''}`} />
+                    Save & Reconnect
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <div className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium border",
+                    gatewayStatus.state === 'running' ? "bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20" :
+                      gatewayStatus.state === 'error' ? "bg-red-500/10 text-red-600 dark:text-red-500 border-red-500/20" :
+                        "bg-black/5 dark:bg-white/5 text-muted-foreground border-transparent"
+                  )}>
+                    <div className={cn("w-1.5 h-1.5 rounded-full",
+                      gatewayStatus.state === 'running' ? "bg-green-500" :
+                        gatewayStatus.state === 'error' ? "bg-red-500" : "bg-muted-foreground"
+                    )} />
+                    {gatewayStatus.state}
+                  </div>
+                  <Button variant="outline" size="sm" onClick={restartGateway} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
+                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                    {t('common:actions.restart')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleShowLogs} className="rounded-full h-8 px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5">
+                    <FileText className="h-3.5 w-3.5 mr-1.5" />
+                    {t('gateway.logs')}
+                  </Button>
+                </div>
               </div>
 
 
@@ -664,7 +729,7 @@ export function Settings() {
             <>
               <Separator className="bg-black/5 dark:bg-white/5" />
               <div data-testid="settings-developer-section">
-                <h2 data-testid="settings-developer-title" className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+                <h2 data-testid="settings-developer-title" className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
                   {t('developer.title')}
                 </h2>
                 <div className="space-y-8">
@@ -1037,7 +1102,7 @@ export function Settings() {
 
           {/* Updates */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
               {t('updates.title')}
             </h2>
             <div className="space-y-6">
@@ -1078,7 +1143,7 @@ export function Settings() {
 
           {/* About */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight">
               {t('about.title')}
             </h2>
             <div className="space-y-3 text-[14px] text-muted-foreground">
@@ -1114,6 +1179,24 @@ export function Settings() {
           </div>
 
         </div>
+        </div>
+        )}
+
+        {activeTab === 'models' && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <Models />
+          </div>
+        )}
+        {activeTab === 'skills' && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <Skills />
+          </div>
+        )}
+        {activeTab === 'channels' && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <Channels />
+          </div>
+        )}
       </div>
     </div>
   );

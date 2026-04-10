@@ -26,6 +26,11 @@ function patchTouchesProxy(patch: Partial<AppSettings>): boolean {
   ));
 }
 
+function patchTouchesRemoteGateway(patch: Partial<AppSettings>): boolean {
+  return Object.prototype.hasOwnProperty.call(patch, 'gatewayRemoteUrl') ||
+    Object.prototype.hasOwnProperty.call(patch, 'gatewayRemoteToken');
+}
+
 function patchTouchesLaunchAtStartup(patch: Partial<AppSettings>): boolean {
   return Object.prototype.hasOwnProperty.call(patch, 'launchAtStartup');
 }
@@ -53,6 +58,11 @@ export async function handleSettingsRoutes(
       }
       if (patchTouchesLaunchAtStartup(patch)) {
         await syncLaunchAtStartupSettingFromStore();
+      }
+      if (patchTouchesRemoteGateway(patch)) {
+        void ctx.gatewayManager.restart().catch((err) => {
+          console.warn('Gateway restart after remote URL change failed:', err);
+        });
       }
       sendJson(res, 200, { success: true });
     } catch (error) {
@@ -88,6 +98,11 @@ export async function handleSettingsRoutes(
       }
       if (key === 'launchAtStartup') {
         await syncLaunchAtStartupSettingFromStore();
+      }
+      if (key === 'gatewayRemoteUrl' || key === 'gatewayRemoteToken') {
+        void ctx.gatewayManager.restart().catch((err) => {
+          console.warn('Gateway restart after remote URL change failed:', err);
+        });
       }
       sendJson(res, 200, { success: true });
     } catch (error) {

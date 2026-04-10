@@ -80,10 +80,23 @@ export interface GatewayManagerEvents {
  * Gateway Manager
  * Handles starting, stopping, and communicating with the OpenClaw Gateway
  */
+function normalizeGatewayWsUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname === '/' || parsed.pathname === '') {
+      parsed.pathname = '/ws';
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 export class GatewayManager extends EventEmitter {
   private process: Electron.UtilityProcess | null = null;
   private processExitCode: number | null = null; // set by exit event, replaces exitCode/signalCode
   private ownsProcess = false;
+  private remoteMode = false;
   private ws: WebSocket | null = null;
   private status: GatewayStatus = { state: 'stopped', port: PORTS.OPENCLAW_GATEWAY };
   private readonly stateController: GatewayStateController;
@@ -238,6 +251,21 @@ export class GatewayManager extends EventEmitter {
     warmupManagedPythonReadiness();
 
     try {
+      // Check if remote gateway mode is configured
+      const { getSetting } = await import('../utils/store');
+      const remoteUrl = await getSetting('gatewayRemoteUrl');
+      if (remoteUrl) {
+        const normalizedUrl = normalizeGatewayWsUrl(remoteUrl);
+        const remoteToken = await getSetting('gatewayRemoteToken');
+        this.remoteMode = true;
+        logger.info(`Connecting to remote Gateway: ${normalizedUrl}`);
+        await this.connect(normalizedUrl, remoteToken || undefined);
+        this.startHealthCheck();
+        logger.info('Connected to remote Gateway successfully');
+        return;
+      }
+      this.remoteMode = false;
+
       await runGatewayStartupSequence({
         port: this.status.port,
         ownedPid: this.process?.pid,
@@ -259,7 +287,7 @@ export class GatewayManager extends EventEmitter {
           return await findExistingGatewayProcess({ port, ownedPid: this.process?.pid });
         },
         connect: async (port, externalToken) => {
-          await this.connect(port, externalToken);
+          await this.connect(`ws://localhost:${port}/ws`, externalToken);
         },
         onConnectedToExistingGateway: () => {
 
@@ -348,9 +376,10 @@ export class GatewayManager extends EventEmitter {
     // Clear all timers
     this.clearAllTimers();
 
-    // If this manager is attached to an external gateway process, ask it to shut down
+    // If this manager is attached to an external (non-remote) gateway process, ask it to shut down
     // over protocol before closing the socket.
-    if (!this.ownsProcess && this.ws?.readyState === WebSocket.OPEN && this.externalShutdownSupported !== false) {
+    // Skip shutdown RPC for remote gateways — we don't want to stop someone's VPS gateway.
+    if (!this.remoteMode && !this.ownsProcess && this.ws?.readyState === WebSocket.OPEN && this.externalShutdownSupported !== false) {
       try {
         await this.rpc('shutdown', undefined, 5000);
         this.externalShutdownSupported = true;
@@ -823,23 +852,48 @@ export class GatewayManager extends EventEmitter {
   }
 
   /**
+   * Get the HTTP base URL for the gateway (local or remote).
+   */
+  async getHttpBaseUrl(): Promise<string> {
+    const { getSetting } = await import('../utils/store');
+    const remoteUrl = await getSetting('gatewayRemoteUrl');
+    if (remoteUrl) {
+      try {
+        const parsed = new URL(remoteUrl);
+        const protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+        return `${protocol}//${parsed.host}`;
+      } catch {
+        return remoteUrl;
+      }
+    }
+    const port = this.status.port || PORTS.OPENCLAW_GATEWAY;
+    return `http://127.0.0.1:${port}`;
+  }
+
+  /**
    * Connect WebSocket to Gateway
    */
-  private async connect(port: number, _externalToken?: string): Promise<void> {
+  private async connect(wsUrl: string, token?: string): Promise<void> {
+    const { getSetting } = await import('../utils/store');
     this.ws = await connectGatewaySocket({
-      port,
+      wsUrl,
       deviceIdentity: this.deviceIdentity,
       platform: process.platform,
       pendingRequests: this.pendingRequests,
-      getToken: async () => await import('../utils/store').then(({ getSetting }) => getSetting('gatewayToken')),
+      getToken: token
+        ? async () => token
+        : async () => getSetting('gatewayToken'),
       onHandshakeComplete: (ws) => {
         this.ws = ws;
         ws.on('pong', () => {
           this.connectionMonitor.markAlive('pong');
         });
+        // Extract port from wsUrl for status (0 for remote/non-numeric)
+        const portMatch = wsUrl.match(/:(\d+)\/ws$/);
+        const resolvedPort = portMatch ? parseInt(portMatch[1], 10) : (this.remoteMode ? 0 : this.status.port);
         this.setStatus({
           state: 'running',
-          port,
+          port: resolvedPort,
           connectedAt: Date.now(),
         });
         this.startPing();

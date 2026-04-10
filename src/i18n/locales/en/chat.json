@@ -15,6 +15,8 @@
         "refresh": "Refresh chat",
         "showThinking": "Show thinking",
         "hideThinking": "Hide thinking",
+        "showGraph": "Show execution graph",
+        "hideGraph": "Hide execution graph",
         "currentAgent": "Talking to {{agent}}"
     },
     "taskPanel": {
@@ -58,7 +60,7 @@
         "send": "Send",
         "stop": "Stop",
         "gatewayConnected": "connected",
-        "gatewayStatus": "gateway {{state}} | port: {{port}} {{pid}}",
+        "gatewayStatus": "gateway {{state}}",
         "retryFailedAttachments": "Retry failed attachments"
     },
     "historyBuckets": {

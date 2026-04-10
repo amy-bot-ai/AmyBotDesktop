@@ -22,6 +22,8 @@ interface SettingsState {
   // Gateway
   gatewayAutoStart: boolean;
   gatewayPort: number;
+  gatewayRemoteUrl: string;
+  gatewayRemoteToken: string;
   proxyEnabled: boolean;
   proxyServer: string;
   proxyHttpServer: string;
@@ -50,6 +52,8 @@ interface SettingsState {
   setTelemetryEnabled: (value: boolean) => void;
   setGatewayAutoStart: (value: boolean) => void;
   setGatewayPort: (port: number) => void;
+  setGatewayRemoteUrl: (url: string) => void;
+  setGatewayRemoteToken: (token: string) => void;
   setProxyEnabled: (value: boolean) => void;
   setProxyServer: (value: string) => void;
   setProxyHttpServer: (value: string) => void;
@@ -73,6 +77,8 @@ const defaultSettings = {
   telemetryEnabled: true,
   gatewayAutoStart: true,
   gatewayPort: 18789,
+  gatewayRemoteUrl: '',
+  gatewayRemoteToken: '',
   proxyEnabled: false,
   proxyServer: '',
   proxyHttpServer: '',
@@ -157,6 +163,8 @@ export const useSettingsStore = create<SettingsState>()(
           body: JSON.stringify({ value: gatewayPort }),
         }).catch(() => { });
       },
+      setGatewayRemoteUrl: (gatewayRemoteUrl) => set({ gatewayRemoteUrl }),
+      setGatewayRemoteToken: (gatewayRemoteToken) => set({ gatewayRemoteToken }),
       setProxyEnabled: (proxyEnabled) => set({ proxyEnabled }),
       setProxyServer: (proxyServer) => set({ proxyServer }),
       setProxyHttpServer: (proxyHttpServer) => set({ proxyHttpServer }),

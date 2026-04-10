@@ -167,7 +167,7 @@ export function buildGatewayConnectFrame(options: {
 }
 
 export async function connectGatewaySocket(options: {
-  port: number;
+  wsUrl: string;
   deviceIdentity: DeviceIdentity | null;
   platform: string;
   pendingRequests: Map<string, PendingGatewayRequest>;
@@ -178,12 +178,12 @@ export async function connectGatewaySocket(options: {
   challengeTimeoutMs?: number;
   connectTimeoutMs?: number;
 }): Promise<WebSocket> {
-  logger.debug(`Connecting Gateway WebSocket (ws://localhost:${options.port}/ws)`);
+  logger.debug(`Connecting Gateway WebSocket (${options.wsUrl})`);
   const challengeTimeoutMs = options.challengeTimeoutMs ?? GATEWAY_CHALLENGE_TIMEOUT_MS;
   const connectTimeoutMs = options.connectTimeoutMs ?? GATEWAY_CONNECT_HANDSHAKE_TIMEOUT_MS;
 
   return await new Promise<WebSocket>((resolve, reject) => {
-    const wsUrl = `ws://localhost:${options.port}/ws`;
+    const wsUrl = options.wsUrl;
     const ws = new WebSocket(wsUrl);
     let handshakeComplete = false;
     let connectId: string | null = null;

@@ -1161,8 +1161,7 @@ function registerGatewayHandlers(
   // should go through this main-process proxy.
   ipcMain.handle('gateway:httpProxy', async (_, request: GatewayHttpProxyRequest) => {
     try {
-      const status = gatewayManager.getStatus();
-      const port = status.port || 18789;
+      const httpBaseUrl = await gatewayManager.getHttpBaseUrl();
       const path = request?.path && request.path.startsWith('/') ? request.path : '/';
       const method = (request?.method || 'GET').toUpperCase();
       const timeoutMs =
@@ -1170,7 +1169,10 @@ function registerGatewayHandlers(
           ? request.timeoutMs
           : 15000;
 
-      const token = await getSetting('gatewayToken');
+      const remoteUrl = await getSetting('gatewayRemoteUrl');
+      const token = remoteUrl
+        ? (await getSetting('gatewayRemoteToken') || await getSetting('gatewayToken'))
+        : await getSetting('gatewayToken');
       const headers: Record<string, string> = {
         ...(request?.headers ?? {}),
       };
@@ -1190,7 +1192,7 @@ function registerGatewayHandlers(
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       const response = await (async () => {
         try {
-          return await proxyAwareFetch(`http://127.0.0.1:${port}${path}`, {
+          return await proxyAwareFetch(`${httpBaseUrl}${path}`, {
             method,
             headers,
             body,
@@ -1315,6 +1317,17 @@ function registerGatewayHandlers(
   // Get the Control UI URL with token for embedding
   ipcMain.handle('gateway:getControlUiUrl', async () => {
     try {
+      const remoteUrl = await getSetting('gatewayRemoteUrl');
+      if (remoteUrl) {
+        const token = await getSetting('gatewayRemoteToken') || await getSetting('gatewayToken');
+        // For remote gateways, derive HTTP base URL and append control UI path
+        const parsed = new URL(remoteUrl);
+        const protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+        const baseUrl = `${protocol}//${parsed.host}`;
+        const urlWithToken = new URL(baseUrl);
+        if (token) urlWithToken.hash = new URLSearchParams({ token }).toString();
+        return { success: true, url: urlWithToken.toString(), port: 0, token };
+      }
       const status = gatewayManager.getStatus();
       const token = await getSetting('gatewayToken');
       const port = status.port || 18789;

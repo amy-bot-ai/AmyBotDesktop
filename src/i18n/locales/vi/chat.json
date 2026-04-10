@@ -1,0 +1,74 @@
+{
+    "gatewayNotRunning": "Cổng chưa chạy",
+    "gatewayRequired": "Cổng OpenClaw cần phải chạy để sử dụng trò chuyện. Nó sẽ tự khởi động, hoặc bạn có thể khởi động từ Cài đặt.",
+    "welcome": {
+        "title": "AmyBot Chat",
+        "subtitle": "Tôi có thể giúp gì cho bạn?",
+        "askQuestions": "Xử lý tác vụ",
+        "askQuestionsDesc": "Thực hiện các yêu cầu theo định hướng tác vụ",
+        "creativeTasks": "Thực thi liên tục",
+        "creativeTasksDesc": "Tiếp tục thực hiện công việc nhiều bước",
+        "brainstorming": "Đa tác nhân song song"
+    },
+    "noLogs": "(Chưa có nhật ký nào)",
+    "toolbar": {
+        "refresh": "Làm mới trò chuyện",
+        "showThinking": "Hiện quá trình suy nghĩ",
+        "hideThinking": "Ẩn quá trình suy nghĩ",
+        "showGraph": "Hiện đồ thị thực thi",
+        "hideGraph": "Ẩn đồ thị thực thi",
+        "currentAgent": "Đang nói chuyện với {{agent}}"
+    },
+    "taskPanel": {
+        "eyebrow": "Chế độ xem chạy",
+        "title": "Phác thảo tác vụ",
+        "emptyTitle": "Chưa có các bước có cấu trúc",
+        "emptyBody": "Khi một lần chạy bắt đầu, AmyBot sẽ hiển thị quá trình suy nghĩ, lời gọi công cụ và trạng thái bàn giao tại đây.",
+        "status": {
+            "idle": "Rảnh",
+            "running_one": "1 bước đang hoạt động",
+            "running_other": "{{count}} bước đang hoạt động"
+        },
+        "stepStatus": {
+            "running": "Đang chạy",
+            "completed": "Hoàn thành",
+            "error": "Lỗi"
+        }
+    },
+    "executionGraph": {
+        "eyebrow": "Lần chạy hội thoại",
+        "title": "Đồ thị thực thi",
+        "status": {
+            "active": "Đang hoạt động",
+            "latest": "Mới nhất",
+            "previous": "Trước đó"
+        },
+        "branchLabel": "nhánh",
+        "userTrigger": "Kích hoạt người dùng",
+        "userTriggerHint": "Được kích hoạt bởi tin nhắn người dùng ở trên",
+        "agentRun": "Thực thi {{agent}}",
+        "agentReply": "Phản hồi trợ lý",
+        "agentReplyHint": "Được giải quyết trong phản hồi trợ lý bên dưới"
+    },
+    "composer": {
+        "attachFiles": "Đính kèm tệp",
+        "pickAgent": "Chọn tác nhân",
+        "clearTarget": "Xóa tác nhân mục tiêu",
+        "targetChip": "@{{agent}}",
+        "agentPickerTitle": "Chuyển tin nhắn tiếp theo đến tác nhân khác",
+        "gatewayDisconnectedPlaceholder": "Cổng chưa kết nối...",
+        "send": "Gửi",
+        "stop": "Dừng",
+        "gatewayConnected": "đã kết nối",
+        "gatewayStatus": "cổng {{state}}",
+        "retryFailedAttachments": "Thử lại tệp đính kèm lỗi"
+    },
+    "historyBuckets": {
+        "today": "Hôm nay",
+        "yesterday": "Hôm qua",
+        "withinWeek": "Trong 1 tuần",
+        "withinTwoWeeks": "Trong 2 tuần",
+        "withinMonth": "Trong 1 tháng",
+        "older": "Hơn 1 tháng trước"
+    }
+}

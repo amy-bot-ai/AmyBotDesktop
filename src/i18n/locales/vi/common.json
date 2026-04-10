@@ -1,0 +1,62 @@
+{
+    "sidebar": {
+        "chat": "Trò chuyện",
+        "newChat": "Cuộc trò chuyện mới",
+        "cronTasks": "Tác vụ định kỳ",
+        "skills": "Kỹ năng",
+        "agents": "Tác nhân",
+        "channels": "Kênh",
+        "dashboard": "Bảng điều khiển",
+        "settings": "Cài đặt",
+        "backToApp": "Quay lại ứng dụng",
+        "general": "Tổng quát",
+        "cron": "Tác vụ định kỳ",
+        "devConsole": "Bảng điều khiển nhà phát triển",
+        "models": "Mô hình",
+        "deleteSessionConfirm": "Bạn có chắc muốn xóa phiên \"{{label}}\"?",
+        "openClawPage": "Trang OpenClaw"
+    },
+    "actions": {
+        "save": "Lưu",
+        "cancel": "Hủy",
+        "delete": "Xóa",
+        "edit": "Chỉnh sửa",
+        "refresh": "Làm mới",
+        "close": "Đóng",
+        "copy": "Sao chép",
+        "search": "Tìm kiếm",
+        "confirm": "Xác nhận",
+        "dismiss": "Bỏ qua",
+        "load": "Tải",
+        "install": "Cài đặt",
+        "uninstall": "Gỡ cài đặt",
+        "enable": "Bật",
+        "disable": "Tắt",
+        "back": "Quay lại",
+        "next": "Tiếp theo",
+        "skip": "Bỏ qua",
+        "restart": "Khởi động lại",
+        "show": "Hiện",
+        "hide": "Ẩn",
+        "clear": "Xóa sạch"
+    },
+    "status": {
+        "running": "Đang chạy",
+        "stopped": "Đã dừng",
+        "error": "Lỗi",
+        "connected": "Đã kết nối",
+        "disconnected": "Đã ngắt kết nối",
+        "enabled": "Đã bật",
+        "disabled": "Đã tắt",
+        "active": "Hoạt động",
+        "paused": "Tạm dừng",
+        "configured": "Đã cấu hình",
+        "loading": "Đang tải...",
+        "saving": "Đang lưu..."
+    },
+    "gateway": {
+        "notRunning": "Cổng chưa chạy",
+        "notRunningDesc": "Cổng OpenClaw cần phải chạy để sử dụng tính năng này. Nó sẽ tự khởi động, hoặc bạn có thể khởi động từ Cài đặt.",
+        "warning": "Cổng chưa chạy."
+    }
+}
