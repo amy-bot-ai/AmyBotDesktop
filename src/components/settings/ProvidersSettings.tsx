@@ -243,9 +243,9 @@ export function ProvidersSettings() {
   return (
     <div data-testid="providers-settings" className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 data-testid="providers-settings-title" className="text-3xl font-serif text-foreground font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+        <h3 data-testid="providers-settings-title" className="text-[15px] font-semibold text-foreground tracking-tight">
           {t('aiProviders.title', 'AI Providers')}
-        </h2>
+        </h3>
         <Button data-testid="providers-add-button" onClick={() => setShowAddDialog(true)} className="rounded-full px-5 h-9 shadow-none font-medium text-[13px]">
           <Plus className="h-4 w-4 mr-2" />
           {t('aiProviders.add')}

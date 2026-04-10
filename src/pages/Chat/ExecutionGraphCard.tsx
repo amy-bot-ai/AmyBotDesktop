@@ -36,7 +36,7 @@ function StepDetailCard({ step }: { step: TaskStep }) {
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-foreground">{step.label}</p>
+            <p className="text-[13px] font-medium text-foreground">{step.label}</p>
             <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:bg-white/10">
               {t(`taskPanel.stepStatus.${step.status}`)}
             </span>
@@ -87,7 +87,7 @@ export function ExecutionGraphCard({
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
             {t('executionGraph.eyebrow')}
           </p>
-          <h3 className="mt-1 text-base font-semibold text-foreground">{t('executionGraph.title')}</h3>
+          <h3 className="mt-1 text-sm font-semibold text-foreground">{t('executionGraph.title')}</h3>
           <p className="mt-1 text-[12px] text-muted-foreground">
             {agentLabel} · {sessionLabel}
           </p>
@@ -124,8 +124,8 @@ export function ExecutionGraphCard({
             </div>
           </div>
           <div className="min-w-0 flex-1 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <GitBranch className="h-4 w-4 text-primary" />
+            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+              <GitBranch className="h-3.5 w-3.5 text-primary" />
               <span>{t('executionGraph.agentRun', { agent: agentLabel })}</span>
             </div>
           </div>

@@ -4,7 +4,7 @@
  * Rendered in the Header when on the Chat page.
  */
 import { useMemo } from 'react';
-import { RefreshCw, Brain, Bot } from 'lucide-react';
+import { RefreshCw, Brain, Bot, GitBranch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useChatStore } from '@/stores/chat';
@@ -17,6 +17,8 @@ export function ChatToolbar() {
   const loading = useChatStore((s) => s.loading);
   const showThinking = useChatStore((s) => s.showThinking);
   const toggleThinking = useChatStore((s) => s.toggleThinking);
+  const showGraph = useChatStore((s) => s.showGraph);
+  const toggleGraph = useChatStore((s) => s.toggleGraph);
   const currentAgentId = useChatStore((s) => s.currentAgentId);
   const agents = useAgentsStore((s) => s.agents);
   const { t } = useTranslation('chat');
@@ -66,6 +68,26 @@ export function ChatToolbar() {
         </TooltipTrigger>
         <TooltipContent>
           <p>{showThinking ? t('toolbar.hideThinking') : t('toolbar.showThinking')}</p>
+        </TooltipContent>
+      </Tooltip>
+
+      {/* Execution Graph Toggle */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'h-8 w-8',
+              showGraph && 'bg-primary/10 text-primary',
+            )}
+            onClick={toggleGraph}
+          >
+            <GitBranch className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{showGraph ? t('toolbar.hideGraph') : t('toolbar.showGraph')}</p>
         </TooltipContent>
       </Tooltip>
     </div>

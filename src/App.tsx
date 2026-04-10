@@ -2,20 +2,18 @@
  * Root Application Component
  * Handles routing and global providers
  */
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Component, useEffect } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { Toaster } from 'sonner';
 import i18n from './i18n';
 import { MainLayout } from './components/layout/MainLayout';
+import { SettingsLayout } from './components/layout/SettingsLayout';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Models } from './pages/Models';
 import { Chat } from './pages/Chat';
 import { Agents } from './pages/Agents';
-import { Channels } from './pages/Channels';
-import { Skills } from './pages/Skills';
-import { Cron } from './pages/Cron';
 import { Settings } from './pages/Settings';
+import { Cron } from './pages/Cron';
 import { Setup } from './pages/Setup';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
@@ -174,11 +172,16 @@ function App() {
           {/* Main application routes */}
           <Route element={<MainLayout />}>
             <Route path="/" element={<Chat />} />
-            <Route path="/models" element={<Models />} />
             <Route path="/agents" element={<Agents />} />
-            <Route path="/channels" element={<Channels />} />
-            <Route path="/skills" element={<Skills />} />
             <Route path="/cron" element={<Cron />} />
+            {/* Legacy redirects */}
+            <Route path="/models" element={<Navigate replace to="/settings/models" />} />
+            <Route path="/channels" element={<Navigate replace to="/settings/channels" />} />
+            <Route path="/skills" element={<Navigate replace to="/settings/skills" />} />
+          </Route>
+
+          {/* Settings — full-screen layout (replaces sidebar with menu) */}
+          <Route element={<SettingsLayout />}>
             <Route path="/settings/*" element={<Settings />} />
           </Route>
         </Routes>

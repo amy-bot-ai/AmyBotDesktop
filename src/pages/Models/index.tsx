@@ -272,18 +272,15 @@ export function Models() {
   const usageRefreshing = isGatewayRunning && fetchState.status === 'loading' && visibleUsageHistory.length > 0;
 
   return (
-    <div data-testid="models-page" className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
-      <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
-        
+    <div data-testid="models-page" className="flex flex-col h-full overflow-hidden">
+      <div className="flex flex-col h-full p-8">
+
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
+        <div className="flex flex-col md:flex-row md:items-start justify-between mb-6 shrink-0 gap-4">
           <div>
-            <h1 data-testid="models-page-title" className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+            <h2 data-testid="models-page-title" className="text-3xl font-serif text-foreground mb-0 font-normal tracking-tight">
               {t('dashboard:models.title')}
-            </h1>
-            <p className="text-[17px] text-foreground/70 font-medium">
-              {t('dashboard:models.subtitle')}
-            </p>
+            </h2>
           </div>
         </div>
 
@@ -295,9 +292,9 @@ export function Models() {
 
           {/* Token Usage History Section */}
           <div>
-            <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+            <h3 className="text-[15px] font-semibold text-foreground mb-4 tracking-tight">
               {t('dashboard:recentTokenHistory.title', 'Token Usage History')}
-            </h2>
+            </h3>
             <div>
               {usageLoading ? (
                 <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">

@@ -88,6 +88,9 @@ export interface ChatState {
   showThinking: boolean;
   thinkingLevel: string | null;
 
+  // Execution Graph
+  showGraph: boolean;
+
   // Actions
   loadSessions: () => Promise<void>;
   switchSession: (key: string) => void;
@@ -109,6 +112,7 @@ export interface ChatState {
   abortRun: () => Promise<void>;
   handleChatEvent: (event: Record<string, unknown>) => void;
   toggleThinking: () => void;
+  toggleGraph: () => void;
   refresh: () => Promise<void>;
   clearError: () => void;
 }

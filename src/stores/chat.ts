@@ -1016,6 +1016,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessionLastActivity: {},
 
   showThinking: true,
+  showGraph: true,
   thinkingLevel: null,
 
   // ── Load sessions via sessions.list ──
@@ -2035,6 +2036,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // ── Toggle thinking visibility ──
 
   toggleThinking: () => set((s) => ({ showThinking: !s.showThinking })),
+  toggleGraph: () => set((s) => ({ showGraph: !s.showGraph })),
 
   // ── Refresh: reload history + sessions ──
 

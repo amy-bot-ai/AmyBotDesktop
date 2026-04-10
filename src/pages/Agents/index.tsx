@@ -22,11 +22,11 @@ import { cn } from '@/lib/utils';
 import telegramIcon from '@/assets/channels/telegram.svg';
 import discordIcon from '@/assets/channels/discord.svg';
 import whatsappIcon from '@/assets/channels/whatsapp.svg';
-import wechatIcon from '@/assets/channels/wechat.svg';
-import dingtalkIcon from '@/assets/channels/dingtalk.svg';
-import feishuIcon from '@/assets/channels/feishu.svg';
-import wecomIcon from '@/assets/channels/wecom.svg';
-import qqIcon from '@/assets/channels/qq.svg';
+// import wechatIcon from '@/assets/channels/wechat.svg';
+// import dingtalkIcon from '@/assets/channels/dingtalk.svg';
+// import feishuIcon from '@/assets/channels/feishu.svg';
+// import wecomIcon from '@/assets/channels/wecom.svg';
+// import qqIcon from '@/assets/channels/qq.svg';
 
 interface ChannelAccountItem {
   accountId: string;
@@ -182,7 +182,7 @@ export function Agents() {
           <div>
             <h1
               className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight"
-              style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}
+             
             >
               {t('title')}
             </h1>
@@ -390,16 +390,16 @@ function ChannelLogo({ type }: { type: ChannelType }) {
       return <img src={discordIcon} alt="Discord" className="w-[20px] h-[20px] dark:invert" />;
     case 'whatsapp':
       return <img src={whatsappIcon} alt="WhatsApp" className="w-[20px] h-[20px] dark:invert" />;
-    case 'wechat':
-      return <img src={wechatIcon} alt="WeChat" className="w-[20px] h-[20px] dark:invert" />;
-    case 'dingtalk':
-      return <img src={dingtalkIcon} alt="DingTalk" className="w-[20px] h-[20px] dark:invert" />;
-    case 'feishu':
-      return <img src={feishuIcon} alt="Feishu" className="w-[20px] h-[20px] dark:invert" />;
-    case 'wecom':
-      return <img src={wecomIcon} alt="WeCom" className="w-[20px] h-[20px] dark:invert" />;
-    case 'qqbot':
-      return <img src={qqIcon} alt="QQ" className="w-[20px] h-[20px] dark:invert" />;
+    // case 'wechat':
+    //   return <img src={wechatIcon} alt="WeChat" className="w-[20px] h-[20px] dark:invert" />;
+    // case 'dingtalk':
+    //   return <img src={dingtalkIcon} alt="DingTalk" className="w-[20px] h-[20px] dark:invert" />;
+    // case 'feishu':
+    //   return <img src={feishuIcon} alt="Feishu" className="w-[20px] h-[20px] dark:invert" />;
+    // case 'wecom':
+    //   return <img src={wecomIcon} alt="WeCom" className="w-[20px] h-[20px] dark:invert" />;
+    // case 'qqbot':
+    //   return <img src={qqIcon} alt="QQ" className="w-[20px] h-[20px] dark:invert" />;
     default:
       return <span className="text-[20px] leading-none">{CHANNEL_ICONS[type] || '💬'}</span>;
   }
