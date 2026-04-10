@@ -1,5 +1,5 @@
 {
-    "name": "clawx",
+    "name": "amybot",
     "version": "0.3.8",
     "pnpm": {
         "onlyBuiltDependencies": [
@@ -26,9 +26,9 @@
             ]
         }
     },
-    "description": "ClawX - Graphical AI Assistant based on OpenClaw",
+    "description": "AmyBot - Graphical AI Assistant based on OpenClaw",
     "main": "dist-electron/main/index.js",
-    "author": "ClawX Team",
+    "author": "AmyBot Team",
     "license": "MIT",
     "private": true,
     "scripts": {

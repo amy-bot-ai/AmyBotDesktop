@@ -248,7 +248,7 @@ async function sanitizeConfig(
 }
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'clawx-test-'));
+  tempDir = await mkdtemp(join(tmpdir(), 'amybot-test-'));
   configPath = join(tempDir, 'openclaw.json');
 });
 

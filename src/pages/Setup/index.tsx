@@ -111,7 +111,7 @@ import {
   hasConfiguredCredentials,
   pickPreferredAccount,
 } from '@/lib/provider-accounts';
-import clawxIcon from '@/assets/logo.svg';
+import amybotIcon from '@/assets/logo.svg';
 
 // Use the shared provider registry for setup providers
 const providers = SETUP_PROVIDERS;
@@ -327,7 +327,7 @@ function WelcomeContent() {
   return (
     <div data-testid="setup-welcome-step" className="text-center space-y-4">
       <div className="mb-4 flex justify-center">
-        <img src={clawxIcon} alt="ClawX" className="h-16 w-16" />
+        <img src={amybotIcon} alt="AmyBot" className="h-16 w-16" />
       </div>
       <h2 className="text-xl font-semibold">{t('welcome.title')}</h2>
       <p className="text-muted-foreground">

@@ -1,6 +1,6 @@
-appId: app.clawx.desktop
-productName: ClawX
-copyright: Copyright © 2026 ClawX
+appId: app.amybot.desktop
+productName: AmyBot
+copyright: Copyright © 2026 AmyBot
 compression: maximum
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
@@ -59,7 +59,7 @@ publish:
     useMultipleRangeRequest: false
   - provider: github
     owner: ValueCell-ai
-    repo: ClawX
+    repo: AmyBot
 
 # macOS Configuration
 mac:
@@ -86,8 +86,8 @@ mac:
   entitlementsInherit: entitlements.mac.plist
   notarize: true
   extendInfo:
-    NSMicrophoneUsageDescription: ClawX requires microphone access for voice features
-    NSCameraUsageDescription: ClawX requires camera access for video features
+    NSMicrophoneUsageDescription: AmyBot requires microphone access for voice features
+    NSCameraUsageDescription: AmyBot requires camera access for video features
 
 dmg:
   # Explicit volume size prevents dmg-builder@1.2.0 auto-calculation from
@@ -133,8 +133,8 @@ nsis:
   differentialPackage: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: ClawX
-  uninstallDisplayName: ClawX
+  shortcutName: AmyBot
+  uninstallDisplayName: AmyBot
   license: LICENSE
   include: scripts/installer.nsh
   installerIcon: resources/icons/icon.ico
@@ -161,17 +161,17 @@ linux:
       arch:
         - x64
   category: Utility
-  maintainer: ClawX Team <public@valuecell.ai>
-  vendor: ClawX
+  maintainer: AmyBot Team <public@valuecell.ai>
+  vendor: AmyBot
   synopsis: AI Assistant powered by OpenClaw
-  description: ClawX is a graphical AI assistant application that integrates with OpenClaw Gateway to provide intelligent automation and assistance across multiple messaging platforms.
+  description: AmyBot is a graphical AI assistant application that integrates with OpenClaw Gateway to provide intelligent automation and assistance across multiple messaging platforms.
   desktop:
     entry:
-      Name: ClawX
+      Name: AmyBot
       Comment: AI Assistant powered by OpenClaw
       Categories: Utility;Network;
       Keywords: ai;assistant;automation;chat;
-      StartupWMClass: clawx
+      StartupWMClass: amybot
 
 appImage:
   license: LICENSE
