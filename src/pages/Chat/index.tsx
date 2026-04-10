@@ -35,6 +35,7 @@ export function Chat() {
   const sending = useChatStore((s) => s.sending);
   const error = useChatStore((s) => s.error);
   const showThinking = useChatStore((s) => s.showThinking);
+  const showGraph = useChatStore((s) => s.showGraph);
   const streamingMessage = useChatStore((s) => s.streamingMessage);
   const streamingTools = useChatStore((s) => s.streamingTools);
   const pendingFinal = useChatStore((s) => s.pendingFinal);
@@ -234,10 +235,10 @@ export function Chat() {
       </div>
 
       {/* Messages Area */}
-      <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-hidden py-4">
         <div className="mx-auto flex h-full min-h-0 max-w-6xl flex-col gap-4 lg:flex-row lg:items-stretch">
           <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-            <div ref={contentRef} className="max-w-4xl space-y-4">
+            <div ref={contentRef} className="max-w-4xl mx-auto space-y-4 px-4">
               {isEmpty ? (
                 <WelcomeScreen />
               ) : (
@@ -259,7 +260,7 @@ export function Chat() {
                         suppressToolCards={suppressToolCards}
                         suppressProcessAttachments={suppressToolCards}
                       />
-                      {userRunCards
+                      {showGraph && userRunCards
                         .filter((card) => card.triggerIndex === idx)
                         .map((card) => (
                           <ExecutionGraphCard
@@ -376,7 +377,7 @@ function WelcomeScreen() {
 
   return (
     <div className="flex flex-col items-center justify-center text-center h-[60vh]">
-      <h1 className="text-4xl md:text-5xl font-serif text-foreground/80 mb-8 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
+      <h1 className="text-2xl md:text-3xl font-serif text-foreground/80 mb-8 font-normal tracking-tight">
         {t('welcome.subtitle')}
       </h1>
 
