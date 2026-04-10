@@ -1,0 +1,9 @@
+{
+  "name": "AmyBotDesktop",
+  "description": "",
+  "createdAt": "2026-04-10T09:36:24.278Z",
+  "platform": "claude-code",
+  "upstreamVersions": {
+    "bmadCommit": "d1163f85"
+  }
+}
