@@ -391,6 +391,8 @@ export function ChannelConfigModal({
         return;
       }
 
+      let validationDetails: Record<string, string> | undefined;
+
       if (meta.connectionType === 'token' && shouldUseCredentialValidation) {
         const validationResponse = await hostApiFetch<{
           success: boolean;
@@ -413,9 +415,10 @@ export function ChannelConfigModal({
           return;
         }
 
+        validationDetails = validationResponse.details;
         const warnings = validationResponse.warnings || [];
-        if (validationResponse.details) {
-          const details = validationResponse.details;
+        if (validationDetails) {
+          const details = validationDetails;
           if (details.botUsername) warnings.push(`Bot: @${details.botUsername}`);
           if (details.guildName) warnings.push(`Server: ${details.guildName}`);
           if (details.channelName) warnings.push(`Channel: #${details.channelName}`);
@@ -429,6 +432,9 @@ export function ChannelConfigModal({
       }
 
       const config: Record<string, unknown> = { ...configValues };
+      if (validationDetails?.applicationId) {
+        config.applicationId = validationDetails.applicationId;
+      }
       const saveResult = await hostApiFetch<{
         success?: boolean;
         error?: string;

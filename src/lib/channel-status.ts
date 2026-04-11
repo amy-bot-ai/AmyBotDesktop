@@ -67,9 +67,11 @@ export function isChannelRuntimeConnected(
     return true;
   }
 
-  // OpenClaw integrations such as Feishu/WeCom may stay "running" without ever
-  // setting a durable connected=true flag. Treat healthy running as connected.
-  return account.running === true && !hasChannelRuntimeError(account);
+  // OpenClaw integrations may stay "running" without ever setting a durable
+  // connected=true flag (e.g. Feishu/WeCom, Telegram polling, Discord).
+  // Treat any running channel as connected — stale startup errors should not
+  // override a live running state.
+  return account.running === true;
 }
 
 export function computeChannelRuntimeStatus(
@@ -77,7 +79,6 @@ export function computeChannelRuntimeStatus(
 ): ChannelConnectionStatus {
   if (isChannelRuntimeConnected(account)) return 'connected';
   if (hasChannelRuntimeError(account)) return 'error';
-  if (account.running === true) return 'connecting';
   return 'disconnected';
 }
 
@@ -89,12 +90,12 @@ export function pickChannelRuntimeStatus(
     return 'connected';
   }
 
-  if (accounts.some((account) => hasChannelRuntimeError(account)) || hasSummaryRuntimeError(summary)) {
-    return 'error';
-  }
-
   if (accounts.some((account) => account.running === true)) {
     return 'connecting';
+  }
+
+  if (accounts.some((account) => hasChannelRuntimeError(account)) || hasSummaryRuntimeError(summary)) {
+    return 'error';
   }
 
   return 'disconnected';

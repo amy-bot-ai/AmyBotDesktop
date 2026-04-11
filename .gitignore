@@ -68,3 +68,13 @@ docs/pr-session-notes-*.md
 .cursor/
 .pnpm-store/
 package-lock.json
+.ralph/logs/
+_bmad-output/
+.todos/
+.sidecar/
+.sidecar-agent
+.sidecar-task
+.sidecar-pr
+.sidecar-start.sh
+.sidecar-base
+.td-root

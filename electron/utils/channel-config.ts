@@ -532,8 +532,11 @@ function transformChannelConfig(
     let transformedConfig: ChannelConfigData = { ...config };
 
     if (channelType === 'discord') {
-        const { guildId, channelId, ...restConfig } = config;
+        const { guildId, channelId, applicationId, ...restConfig } = config;
         transformedConfig = { ...restConfig };
+        if (applicationId && typeof applicationId === 'string' && applicationId.trim()) {
+            transformedConfig.applicationId = applicationId.trim();
+        }
 
         transformedConfig.groupPolicy = 'allowlist';
         transformedConfig.dm = { enabled: false };
@@ -842,6 +845,9 @@ function extractFormValues(channelType: string, saved: ChannelConfigData): Recor
     if (channelType === 'discord') {
         if (saved.token && typeof saved.token === 'string') {
             values.token = saved.token;
+        }
+        if (saved.applicationId && typeof saved.applicationId === 'string') {
+            values.applicationId = saved.applicationId;
         }
         const guilds = saved.guilds as Record<string, Record<string, unknown>> | undefined;
         if (guilds) {
@@ -1396,6 +1402,7 @@ async function validateDiscordCredentials(
         }
         result.details!.botUsername = meData.username || 'Unknown';
         result.details!.botId = meData.id || '';
+        result.details!.applicationId = meData.id || '';
     } catch (error) {
         return { valid: false, errors: [`Connection error when validating bot token: ${error instanceof Error ? error.message : String(error)}`], warnings: [] };
     }
