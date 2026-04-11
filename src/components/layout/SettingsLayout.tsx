@@ -26,7 +26,7 @@ export function SettingsLayout() {
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Settings sidebar */}
-        <aside className="flex w-56 shrink-0 flex-col border-r bg-secondary/60 dark:bg-background">
+        <aside className="flex w-64 shrink-0 flex-col border-r bg-secondary/60 dark:bg-background">
           {/* Back to App */}
           <button
             onClick={() => navigate('/')}

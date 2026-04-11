@@ -1383,17 +1383,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const userMsgAt = get().lastUserMessageAt;
       if (get().sending && userMsgAt) {
         const userMsMs = toMs(userMsgAt);
-        const hasRecentUser = enrichedMessages.some(
-          (m) => m.role === 'user' && m.timestamp && Math.abs(toMs(m.timestamp) - userMsMs) < 5000,
+        // Find the optimistic message first so we can also match by text content
+        // (guards against client/server clock skew causing timestamp mismatch)
+        const currentMsgs = get().messages;
+        const optimistic = [...currentMsgs].reverse().find(
+          (m) => m.role === 'user' && m.timestamp && Math.abs(toMs(m.timestamp) - userMsMs) < 60_000,
         );
-        if (!hasRecentUser) {
-          const currentMsgs = get().messages;
-          const optimistic = [...currentMsgs].reverse().find(
-            (m) => m.role === 'user' && m.timestamp && Math.abs(toMs(m.timestamp) - userMsMs) < 5000,
-          );
-          if (optimistic) {
-            finalMessages = [...enrichedMessages, optimistic];
-          }
+        const optimisticText = optimistic ? getMessageText(optimistic.content) : null;
+        const hasRecentUser = enrichedMessages.some((m) => {
+          if (m.role !== 'user') return false;
+          // Match by timestamp with a generous 30-second window to absorb clock skew
+          if (m.timestamp && Math.abs(toMs(m.timestamp) - userMsMs) < 30_000) return true;
+          // Fallback: match by text content to prevent duplicates when clocks differ
+          if (optimisticText && getMessageText(m.content) === optimisticText) return true;
+          return false;
+        });
+        if (!hasRecentUser && optimistic) {
+          finalMessages = [...enrichedMessages, optimistic];
         }
       }
 
@@ -1528,6 +1534,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   ) => {
     const trimmed = text.trim();
     if (!trimmed && (!attachments || attachments.length === 0)) return;
+    // Guard against double-send from rapid clicks before React re-renders with sending=true
+    if (get().sending) return;
 
     const targetSessionKey = resolveMainSessionKeyForAgent(targetAgentId) ?? get().currentSessionKey;
 
