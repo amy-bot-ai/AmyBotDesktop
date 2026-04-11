@@ -50,12 +50,15 @@ importers:
         specifier: ^8.19.0
         version: 8.20.0
     devDependencies:
+      '@amybot/openclaw':
+        specifier: 2026.4.9-1
+        version: 2026.4.9-1(@napi-rs/canvas@0.1.97)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3)
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.2.0)
       '@larksuite/openclaw-lark':
         specifier: 2026.4.7
-        version: 2026.4.7(openclaw@2026.4.9)
+        version: 2026.4.7
       '@playwright/test':
         specifier: ^1.56.1
         version: 1.59.1
@@ -97,7 +100,7 @@ importers:
         version: 1.2.8(@types/react-dom@19.2.3)(@types/react@19.2.14)(react-dom@19.2.5)(react@19.2.5)
       '@soimy/dingtalk':
         specifier: ^3.5.3
-        version: 3.5.3(openclaw@2026.4.9)
+        version: 3.5.3
       '@tencent-weixin/openclaw-weixin':
         specifier: ^2.1.7
         version: 2.1.7
@@ -173,9 +176,6 @@ importers:
       lucide-react:
         specifier: ^0.563.0
         version: 0.563.0(react@19.2.5)
-      openclaw:
-        specifier: 2026.4.9
-        version: 2026.4.9(@napi-rs/canvas@0.1.97)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3)
       png2icons:
         specifier: ^2.0.1
         version: 2.0.1
@@ -265,6 +265,108 @@ packages:
   /@alloc/quick-lru@5.2.0:
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
+    dev: true
+
+  /@amybot/openclaw@2026.4.9-1(@napi-rs/canvas@0.1.97)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3):
+    resolution: {integrity: sha512-h0zEHvXPdXDSredJXJkIJmR20J6dHCLBi03JnmS36w6B+GUHZWqGLLtQKQIXyHqvBtQnzR7VjM5bF7G7TkNA+A==}
+    engines: {node: '>=22.14.0'}
+    hasBin: true
+    peerDependencies:
+      '@napi-rs/canvas': ^0.1.89
+      node-llama-cpp: 3.18.1
+    peerDependenciesMeta:
+      node-llama-cpp:
+        optional: true
+    dependencies:
+      '@agentclientprotocol/sdk': 0.18.0(zod@4.3.6)
+      '@anthropic-ai/vertex-sdk': 0.14.4(zod@4.3.6)
+      '@aws-sdk/client-bedrock': 3.1024.0
+      '@aws-sdk/client-bedrock-runtime': 3.1024.0
+      '@aws-sdk/credential-provider-node': 3.972.29
+      '@aws/bedrock-token-generator': 1.1.0
+      '@buape/carbon': 0.14.0(@discordjs/opus@0.10.0)(hono@4.12.12)(opusscript@0.1.1)
+      '@clack/prompts': 1.2.0
+      '@google/genai': 1.49.0(@modelcontextprotocol/sdk@1.29.0)
+      '@grammyjs/runner': 2.0.3(grammy@1.42.0)
+      '@grammyjs/transformer-throttler': 1.2.1(grammy@1.42.0)
+      '@homebridge/ciao': 1.3.6
+      '@lancedb/lancedb': 0.27.2(apache-arrow@18.1.0)
+      '@larksuiteoapi/node-sdk': 1.60.0
+      '@line/bot-sdk': 11.0.0
+      '@lydell/node-pty': 1.2.0-beta.10
+      '@mariozechner/pi-agent-core': 0.65.2(@modelcontextprotocol/sdk@1.29.0)(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-ai': 0.65.2(@modelcontextprotocol/sdk@1.29.0)(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-coding-agent': 0.65.2(@modelcontextprotocol/sdk@1.29.0)(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-tui': 0.65.2
+      '@matrix-org/matrix-sdk-crypto-wasm': 18.0.0
+      '@modelcontextprotocol/sdk': 1.29.0(zod@4.3.6)
+      '@mozilla/readability': 0.6.0
+      '@napi-rs/canvas': 0.1.97
+      '@sinclair/typebox': 0.34.49
+      '@slack/bolt': 4.7.0(@types/express@5.0.6)
+      '@slack/web-api': 7.15.0
+      ajv: 8.18.0
+      chalk: 5.6.2
+      chokidar: 5.0.0
+      cli-highlight: 2.1.11
+      commander: 14.0.3
+      croner: 10.0.1
+      discord-api-types: 0.38.45
+      dotenv: 17.4.1
+      express: 5.2.1
+      file-type: 22.0.0
+      gaxios: 7.1.4
+      google-auth-library: 10.6.2
+      grammy: 1.42.0
+      hono: 4.12.12
+      https-proxy-agent: 7.0.6
+      ipaddr.js: 2.3.0
+      jimp: 1.6.1
+      jiti: 2.6.1
+      json5: 2.2.3
+      jszip: 3.10.1
+      linkedom: 0.18.12
+      long: 5.3.2
+      markdown-it: 14.1.1
+      matrix-js-sdk: 41.3.0-rc.0
+      mpg123-decoder: 1.0.3
+      node-edge-tts: 1.2.10
+      nostr-tools: 2.23.3(typescript@5.9.3)
+      openai: 6.34.0(ws@8.20.0)(zod@4.3.6)
+      opusscript: 0.1.1
+      osc-progress: 0.3.0
+      pdfjs-dist: 5.6.205
+      playwright-core: 1.59.1
+      proxy-agent: 8.0.1
+      qrcode-terminal: 0.12.0
+      sharp: 0.34.5
+      silk-wasm: 3.7.1
+      sqlite-vec: 0.1.9
+      tar: 7.5.13
+      tslog: 4.10.2
+      undici: 8.0.2
+      uuid: 13.0.0
+      ws: 8.20.0
+      yaml: 2.8.3
+      zod: 4.3.6
+    optionalDependencies:
+      '@discordjs/opus': 0.10.0
+      '@matrix-org/matrix-sdk-crypto-nodejs': 0.4.0
+      openshell: 0.1.0
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - '@types/express'
+      - apache-arrow
+      - aws-crt
+      - bufferutil
+      - canvas
+      - debug
+      - encoding
+      - ffmpeg-static
+      - node-opus
+      - supports-color
+      - typescript
+      - utf-8-validate
     dev: true
 
   /@anthropic-ai/sdk@0.73.0(zod@4.3.6):
@@ -2606,7 +2708,7 @@ packages:
       '@lancedb/lancedb-win32-x64-msvc': 0.27.2
     dev: true
 
-  /@larksuite/openclaw-lark@2026.4.7(openclaw@2026.4.9):
+  /@larksuite/openclaw-lark@2026.4.7:
     resolution: {integrity: sha512-oiS7hHwJpoOQCHjgAT2xPTO9zmmUKEje2kgsYC+Q8ZMu0gn/sI+FE2NYnQ3dVcgqw7z+2rdajgcTP6kkisFxNw==}
     engines: {node: '>=22'}
     hasBin: true
@@ -2619,7 +2721,6 @@ packages:
       '@larksuiteoapi/node-sdk': 1.60.0
       '@sinclair/typebox': 0.34.48
       image-size: 2.0.2
-      openclaw: 2026.4.9(@napi-rs/canvas@0.1.97)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3)
       zod: 4.3.6
     transitivePeerDependencies:
       - bufferutil
@@ -4864,7 +4965,7 @@ packages:
       tslib: 2.8.1
     dev: true
 
-  /@soimy/dingtalk@3.5.3(openclaw@2026.4.9):
+  /@soimy/dingtalk@3.5.3:
     resolution: {integrity: sha512-I8y57KVic6Gjg/BmaZBcoV+ktW/riM/TFW/XzqhqL4beNicYcy8nxuyxqpLuFQNw0f4KU363aZl0BkmW07Wmjg==}
     peerDependencies:
       openclaw: '>=2026.3.28'
@@ -4876,7 +4977,6 @@ packages:
       dingtalk-stream: 2.1.5
       form-data: 4.0.5
       mammoth: 1.12.0
-      openclaw: 2026.4.9(@napi-rs/canvas@0.1.97)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3)
       pdf-parse: 2.4.5
       zod: 4.3.6
     transitivePeerDependencies:
@@ -10105,108 +10205,6 @@ packages:
       zod: 4.3.6
     dev: true
 
-  /openclaw@2026.4.9(@napi-rs/canvas@0.1.97)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3):
-    resolution: {integrity: sha512-w3DMKeVv7BnKmcQvq2Xu+X51HMv02L00YBX4uRDSuAEIgP3Ehm7JlKG9KTbfhAFu93143MqZNqI75/eXjkRO6Q==}
-    engines: {node: '>=22.14.0'}
-    hasBin: true
-    peerDependencies:
-      '@napi-rs/canvas': ^0.1.89
-      node-llama-cpp: 3.18.1
-    peerDependenciesMeta:
-      node-llama-cpp:
-        optional: true
-    dependencies:
-      '@agentclientprotocol/sdk': 0.18.0(zod@4.3.6)
-      '@anthropic-ai/vertex-sdk': 0.14.4(zod@4.3.6)
-      '@aws-sdk/client-bedrock': 3.1024.0
-      '@aws-sdk/client-bedrock-runtime': 3.1024.0
-      '@aws-sdk/credential-provider-node': 3.972.29
-      '@aws/bedrock-token-generator': 1.1.0
-      '@buape/carbon': 0.14.0(@discordjs/opus@0.10.0)(hono@4.12.12)(opusscript@0.1.1)
-      '@clack/prompts': 1.2.0
-      '@google/genai': 1.49.0(@modelcontextprotocol/sdk@1.29.0)
-      '@grammyjs/runner': 2.0.3(grammy@1.42.0)
-      '@grammyjs/transformer-throttler': 1.2.1(grammy@1.42.0)
-      '@homebridge/ciao': 1.3.6
-      '@lancedb/lancedb': 0.27.2(apache-arrow@18.1.0)
-      '@larksuiteoapi/node-sdk': 1.60.0
-      '@line/bot-sdk': 11.0.0
-      '@lydell/node-pty': 1.2.0-beta.10
-      '@mariozechner/pi-agent-core': 0.65.2(@modelcontextprotocol/sdk@1.29.0)(ws@8.20.0)(zod@4.3.6)
-      '@mariozechner/pi-ai': 0.65.2(@modelcontextprotocol/sdk@1.29.0)(ws@8.20.0)(zod@4.3.6)
-      '@mariozechner/pi-coding-agent': 0.65.2(@modelcontextprotocol/sdk@1.29.0)(ws@8.20.0)(zod@4.3.6)
-      '@mariozechner/pi-tui': 0.65.2
-      '@matrix-org/matrix-sdk-crypto-wasm': 18.0.0
-      '@modelcontextprotocol/sdk': 1.29.0(zod@4.3.6)
-      '@mozilla/readability': 0.6.0
-      '@napi-rs/canvas': 0.1.97
-      '@sinclair/typebox': 0.34.49
-      '@slack/bolt': 4.7.0(@types/express@5.0.6)
-      '@slack/web-api': 7.15.0
-      ajv: 8.18.0
-      chalk: 5.6.2
-      chokidar: 5.0.0
-      cli-highlight: 2.1.11
-      commander: 14.0.3
-      croner: 10.0.1
-      discord-api-types: 0.38.45
-      dotenv: 17.4.1
-      express: 5.2.1
-      file-type: 22.0.0
-      gaxios: 7.1.4
-      google-auth-library: 10.6.2
-      grammy: 1.42.0
-      hono: 4.12.12
-      https-proxy-agent: 7.0.6
-      ipaddr.js: 2.3.0
-      jimp: 1.6.1
-      jiti: 2.6.1
-      json5: 2.2.3
-      jszip: 3.10.1
-      linkedom: 0.18.12
-      long: 5.3.2
-      markdown-it: 14.1.1
-      matrix-js-sdk: 41.3.0-rc.0
-      mpg123-decoder: 1.0.3
-      node-edge-tts: 1.2.10
-      nostr-tools: 2.23.3(typescript@5.9.3)
-      openai: 6.34.0(ws@8.20.0)(zod@4.3.6)
-      opusscript: 0.1.1
-      osc-progress: 0.3.0
-      pdfjs-dist: 5.6.205
-      playwright-core: 1.59.1
-      proxy-agent: 8.0.1
-      qrcode-terminal: 0.12.0
-      sharp: 0.34.5
-      silk-wasm: 3.7.1
-      sqlite-vec: 0.1.9
-      tar: 7.5.13
-      tslog: 4.10.2
-      undici: 8.0.2
-      uuid: 13.0.0
-      ws: 8.20.0
-      yaml: 2.8.3
-      zod: 4.3.6
-    optionalDependencies:
-      '@discordjs/opus': 0.10.0
-      '@matrix-org/matrix-sdk-crypto-nodejs': 0.4.0
-      openshell: 0.1.0
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - '@types/express'
-      - apache-arrow
-      - aws-crt
-      - bufferutil
-      - canvas
-      - debug
-      - encoding
-      - ffmpeg-static
-      - node-opus
-      - supports-color
-      - typescript
-      - utf-8-validate
-    dev: true
-
   /openshell@0.1.0:
     resolution: {integrity: sha512-B7jLewH+d73hraWcrSFgNOjvd+frW5JPejkTpqgj2EJBjX/Yk1Y4blgP5pDl4FwrBxfmwsTKR08Uwgrdo+xpSg==}
     engines: {node: '>=18'}
@@ -10527,7 +10525,7 @@ packages:
     resolution: {integrity: sha512-DlOzet0HO7OEnmUmB6wWGJrrdvbyJKftI1bhMitK7O2N8W2gc757yyYBbINy9IDafXAV9wmKr9t7xsTaNKRG5Q==}
     engines: {node: '>=20.16.0 || >=22.3.0'}
     optionalDependencies:
-      '@napi-rs/canvas': 0.1.80
+      '@napi-rs/canvas': 0.1.97
     dev: true
 
   /pdfjs-dist@5.6.205:

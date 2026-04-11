@@ -31,10 +31,10 @@ function normWin(p) {
 
 echo`📦 Bundling openclaw for electron-builder...`;
 
-// 1. Resolve the real path of node_modules/openclaw (follows pnpm symlink)
-const openclawLink = path.join(NODE_MODULES, 'openclaw');
+// 1. Resolve the real path of node_modules/@amybot/openclaw (follows pnpm symlink)
+const openclawLink = path.join(NODE_MODULES, '@amybot', 'openclaw');
 if (!fs.existsSync(openclawLink)) {
-  echo`❌ node_modules/openclaw not found. Run pnpm install first.`;
+  echo`❌ node_modules/@amybot/openclaw not found. Run pnpm install first.`;
   process.exit(1);
 }
 
@@ -128,7 +128,7 @@ if (!openclawVirtualNM) {
 }
 
 echo`   Virtual store root: ${openclawVirtualNM}`;
-queue.push({ nodeModulesDir: openclawVirtualNM, skipPkg: 'openclaw' });
+queue.push({ nodeModulesDir: openclawVirtualNM, skipPkg: '@amybot/openclaw' });
 
 const SKIP_PACKAGES = new Set([
   'typescript',

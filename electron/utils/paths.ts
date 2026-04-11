@@ -3,9 +3,10 @@
  * Cross-platform path resolution helpers
  */
 import { createRequire } from 'node:module';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { existsSync, mkdirSync, readFileSync, realpathSync } from 'fs';
+import { execSync } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 
@@ -109,16 +110,89 @@ export function getPreloadPath(): string {
 }
 
 /**
- * Get OpenClaw package directory
- * - Production (packaged): from resources/openclaw (copied by electron-builder extraResources)
- * - Development: from node_modules/openclaw
+ * Find openclaw installed globally on the system.
+ * Checks npm global root, nvm paths, and resolves from `which openclaw`.
+ * Returns the package directory if found, null otherwise.
+ */
+function findGlobalOpenClawDir(): string | null {
+  // 1. Try npm/pnpm global root
+  const globalRoots: string[] = [];
+  try {
+    const npmRoot = execSync('npm root -g', { encoding: 'utf8', timeout: 5000 }).trim();
+    if (npmRoot) globalRoots.push(npmRoot);
+  } catch { /* npm not found or failed */ }
+  try {
+    const pnpmHome = process.env.PNPM_HOME;
+    if (pnpmHome) globalRoots.push(join(pnpmHome, 'node_modules'));
+  } catch { /* ignore */ }
+
+  for (const root of globalRoots) {
+    // Check both @amybot/openclaw (private fork) and openclaw (upstream)
+    for (const pkgName of ['@amybot/openclaw', 'openclaw']) {
+      const candidate = join(root, ...pkgName.split('/'));
+      if (existsSync(join(candidate, 'package.json'))) return candidate;
+    }
+  }
+
+  // 2. Try resolving from `which openclaw` / `where openclaw`
+  try {
+    const whichCmd = process.platform === 'win32' ? 'where openclaw' : 'which openclaw';
+    const binPath = execSync(whichCmd, { encoding: 'utf8', timeout: 5000 }).trim().split('\n')[0];
+    if (binPath) {
+      // Resolve symlink to get the real binary path
+      let realBin = binPath;
+      try { realBin = realpathSync(binPath); } catch { /* use as-is */ }
+      // Walk up from the binary to find the package.json
+      // Typical layout: /usr/local/lib/node_modules/openclaw/bin/openclaw -> package.json 2 levels up
+      for (let up = 1; up <= 4; up++) {
+        let dir = realBin;
+        for (let i = 0; i < up; i++) dir = dirname(dir);
+        if (existsSync(join(dir, 'package.json'))) {
+          try {
+            const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'));
+            if (pkg.name === '@amybot/openclaw' || pkg.name === 'openclaw') return dir;
+          } catch { /* continue */ }
+        }
+      }
+    }
+  } catch { /* which/where not found or openclaw not on PATH */ }
+
+  // 3. Common nvm/fnm paths
+  const home = homedir();
+  const nvmCandidates = [
+    join(home, '.nvm', 'versions', 'node'),
+    join(home, '.fnm', 'node-versions'),
+  ];
+  for (const nvmBase of nvmCandidates) {
+    if (!existsSync(nvmBase)) continue;
+    try {
+      // Look in first found node version's lib/node_modules/openclaw
+      const versions = realpathSync(nvmBase);
+      const candidate = join(versions, 'lib', 'node_modules', 'openclaw');
+      if (existsSync(join(candidate, 'package.json'))) return candidate;
+    } catch { /* ignore */ }
+  }
+
+  return null;
+}
+
+/**
+ * Get OpenClaw package directory.
+ * Resolution order:
+ * 1. Production (packaged): resources/openclaw bundled with the app
+ * 2. Development: node_modules/openclaw (if present — optional)
+ * 3. Global system install (npm/pnpm global, resolved via `which openclaw`)
  */
 export function getOpenClawDir(): string {
   if (getElectronApp().isPackaged) {
     return join(process.resourcesPath, 'openclaw');
   }
-  // Development: use node_modules/openclaw
-  return join(__dirname, '../../node_modules/openclaw');
+  // Development: check local node_modules first
+  const devDir = join(__dirname, '../../node_modules/@amybot/openclaw');
+  if (existsSync(devDir)) return devDir;
+
+  // Fall back to global system install
+  return findGlobalOpenClawDir() ?? devDir;
 }
 
 /**
@@ -188,6 +262,8 @@ export interface OpenClawStatus {
   entryPath: string;
   dir: string;
   version?: string;
+  /** Where openclaw was found: 'bundled' | 'local' | 'global' | 'not-found' */
+  source?: 'bundled' | 'local' | 'global' | 'not-found';
 }
 
 export function getOpenClawStatus(): OpenClawStatus {
@@ -205,12 +281,26 @@ export function getOpenClawStatus(): OpenClawStatus {
     // Ignore version read errors
   }
 
+  // Determine install source
+  let source: OpenClawStatus['source'] = 'not-found';
+  if (getElectronApp().isPackaged) {
+    source = 'bundled';
+  } else {
+    const devDir = join(__dirname, '../../node_modules/@amybot/openclaw');
+    if (existsSync(devDir) && existsSync(join(devDir, 'package.json'))) {
+      source = 'local';
+    } else if (findGlobalOpenClawDir() !== null) {
+      source = 'global';
+    }
+  }
+
   const status: OpenClawStatus = {
     packageExists: isOpenClawPresent(),
     isBuilt: isOpenClawBuilt(),
     entryPath: getOpenClawEntryPath(),
     dir,
     version,
+    source,
   };
 
   try {

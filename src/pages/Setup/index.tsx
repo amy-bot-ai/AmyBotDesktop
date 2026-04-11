@@ -380,6 +380,19 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   const gatewayStatus = useGatewayStore((state) => state.status);
   const startGateway = useGatewayStore((state) => state.start);
 
+  const gatewayRemoteUrl = useSettingsStore((state) => state.gatewayRemoteUrl);
+  const gatewayRemoteToken = useSettingsStore((state) => state.gatewayRemoteToken);
+  const setGatewayRemoteUrl = useSettingsStore((state) => state.setGatewayRemoteUrl);
+  const setGatewayRemoteToken = useSettingsStore((state) => state.setGatewayRemoteToken);
+
+  // Initialize mode from existing settings
+  const [gatewayMode, setGatewayMode] = useState<'local' | 'remote'>(() =>
+    gatewayRemoteUrl ? 'remote' : 'local'
+  );
+  const [remoteUrlDraft, setRemoteUrlDraft] = useState(gatewayRemoteUrl);
+  const [remoteTokenDraft, setRemoteTokenDraft] = useState(gatewayRemoteToken);
+  const [savingRemote, setSavingRemote] = useState(false);
+
   const [checks, setChecks] = useState({
     nodejs: { status: 'checking' as 'checking' | 'success' | 'error', message: '' },
     openclaw: { status: 'checking' as 'checking' | 'success' | 'error', message: '' },
@@ -389,6 +402,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   const [logContent, setLogContent] = useState('');
   const [openclawDir, setOpenclawDir] = useState('');
   const gatewayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastGatewayErrorRef = useRef<string | null>(null);
 
   const runChecks = useCallback(async () => {
     // Reset checks
@@ -411,6 +425,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         isBuilt: boolean;
         dir: string;
         version?: string;
+        source?: 'bundled' | 'local' | 'global' | 'not-found';
       };
 
       setOpenclawDir(openclawStatus.dir);
@@ -420,7 +435,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
           ...prev,
           openclaw: {
             status: 'error',
-            message: `OpenClaw package not found at: ${openclawStatus.dir}`
+            message: 'OpenClaw not found. Run: npm install -g openclaw'
           },
         }));
       } else if (!openclawStatus.isBuilt) {
@@ -428,16 +443,17 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
           ...prev,
           openclaw: {
             status: 'error',
-            message: 'OpenClaw package found but dist is missing'
+            message: 'OpenClaw found but not built (dist missing)'
           },
         }));
       } else {
         const versionLabel = openclawStatus.version ? ` v${openclawStatus.version}` : '';
+        const sourceLabel = openclawStatus.source === 'global' ? ' · global' : openclawStatus.source === 'local' ? ' · local' : '';
         setChecks((prev) => ({
           ...prev,
           openclaw: {
             status: 'success',
-            message: `OpenClaw package ready${versionLabel}`
+            message: `OpenClaw ready${versionLabel}${sourceLabel}`
           },
         }));
       }
@@ -451,10 +467,14 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
     // Check Gateway — read directly from store to avoid stale closure
     // Don't immediately report error; gateway may still be initializing
     const currentGateway = useGatewayStore.getState().status;
+    const currentRemoteUrl = useSettingsStore.getState().gatewayRemoteUrl;
     if (currentGateway.state === 'running') {
+      const runningMsg = currentRemoteUrl
+        ? `Connected · remote`
+        : `Running on port ${currentGateway.port}`;
       setChecks((prev) => ({
         ...prev,
-        gateway: { status: 'success', message: `Running on port ${currentGateway.port}` },
+        gateway: { status: 'success', message: runningMsg },
       }));
     } else if (currentGateway.state === 'error') {
       setChecks((prev) => ({
@@ -480,28 +500,48 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
 
   // Update canProceed when gateway status changes
   useEffect(() => {
-    const allPassed = checks.nodejs.status === 'success'
-      && checks.openclaw.status === 'success'
-      && (checks.gateway.status === 'success' || gatewayStatus.state === 'running');
-    onStatusChange(allPassed);
-  }, [checks, gatewayStatus, onStatusChange]);
+    if (gatewayMode === 'remote') {
+      onStatusChange(checks.gateway.status === 'success' || gatewayStatus.state === 'running');
+    } else {
+      const allPassed = checks.nodejs.status === 'success'
+        && checks.openclaw.status === 'success'
+        && (checks.gateway.status === 'success' || gatewayStatus.state === 'running');
+      onStatusChange(allPassed);
+    }
+  }, [checks, gatewayStatus, onStatusChange, gatewayMode]);
 
   // Update gateway check when gateway status changes
   useEffect(() => {
     if (gatewayStatus.state === 'running') {
+      const remoteUrl = useSettingsStore.getState().gatewayRemoteUrl;
+      const runningMsg = remoteUrl
+        ? (() => {
+            let host = remoteUrl;
+            try { host = new URL(remoteUrl).host; } catch { /* use raw */ }
+            return `Connected to ${host}`;
+          })()
+        : t('runtime.status.gatewayRunning', { port: gatewayStatus.port });
       setChecks((prev) => ({
         ...prev,
-        gateway: { status: 'success', message: t('runtime.status.gatewayRunning', { port: gatewayStatus.port }) },
+        gateway: { status: 'success', message: runningMsg },
       }));
     } else if (gatewayStatus.state === 'error') {
+      const errMsg = gatewayStatus.error || 'Failed to start';
+      lastGatewayErrorRef.current = errMsg;
       setChecks((prev) => ({
         ...prev,
-        gateway: { status: 'error', message: gatewayStatus.error || 'Failed to start' },
+        gateway: { status: 'error', message: errMsg },
       }));
     } else if (gatewayStatus.state === 'starting' || gatewayStatus.state === 'reconnecting') {
+      // If we have a previous error, keep showing it with a "retrying" note
+      // so the user knows what went wrong instead of just seeing "Starting..."
+      const lastErr = lastGatewayErrorRef.current;
       setChecks((prev) => ({
         ...prev,
-        gateway: { status: 'checking', message: 'Starting...' },
+        gateway: {
+          status: 'error',
+          message: lastErr ? `${lastErr} (retrying...)` : 'Starting...',
+        },
       }));
     }
     // 'stopped' state: keep current check status (likely 'checking') to allow startup time
@@ -541,11 +581,40 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   }, [gatewayStatus.state]);
 
   const handleStartGateway = async () => {
+    lastGatewayErrorRef.current = null;
     setChecks((prev) => ({
       ...prev,
       gateway: { status: 'checking', message: 'Starting...' },
     }));
     await startGateway();
+  };
+
+  const handleSaveRemoteGateway = async () => {
+    lastGatewayErrorRef.current = null;
+    setSavingRemote(true);
+    try {
+      setGatewayRemoteUrl(remoteUrlDraft.trim());
+      setGatewayRemoteToken(remoteTokenDraft.trim());
+      await hostApiFetch('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          gatewayRemoteUrl: remoteUrlDraft.trim(),
+          gatewayRemoteToken: remoteTokenDraft.trim(),
+        }),
+      });
+      // reset gateway check — it will update via the gatewayStatus watcher
+      setChecks((prev) => ({
+        ...prev,
+        gateway: { status: 'checking', message: 'Connecting...' },
+      }));
+    } catch (error) {
+      setChecks((prev) => ({
+        ...prev,
+        gateway: { status: 'error', message: `Failed to save: ${error}` },
+      }));
+    } finally {
+      setSavingRemote(false);
+    }
   };
 
   const handleShowLogs = async () => {
@@ -615,59 +684,154 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">{t('runtime.title')}</h2>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={handleShowLogs}>
-            {t('runtime.viewLogs')}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={runChecks}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            {t('runtime.recheck')}
-          </Button>
-        </div>
+        {gatewayMode === 'local' && (
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={handleShowLogs}>
+              {t('runtime.viewLogs')}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={runChecks}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              {t('runtime.recheck')}
+            </Button>
+          </div>
+        )}
       </div>
+
+      {/* Gateway Mode Toggle */}
+      <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="font-medium text-sm">Gateway</span>
+          <div className="flex bg-black/20 rounded-lg p-0.5 gap-0.5">
+            <button
+              onClick={() => {
+                setGatewayMode('local');
+                // Clear remote settings when switching to local
+                if (gatewayMode === 'remote') {
+                  setGatewayRemoteUrl('');
+                  setGatewayRemoteToken('');
+                  void hostApiFetch('/api/settings', {
+                    method: 'PUT',
+                    body: JSON.stringify({ gatewayRemoteUrl: '', gatewayRemoteToken: '' }),
+                  });
+                }
+              }}
+              className={cn(
+                'px-3 py-1 rounded-md text-sm font-medium transition-all',
+                gatewayMode === 'local'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Local
+            </button>
+            <button
+              onClick={() => setGatewayMode('remote')}
+              className={cn(
+                'px-3 py-1 rounded-md text-sm font-medium transition-all',
+                gatewayMode === 'remote'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Remote
+            </button>
+          </div>
+        </div>
+
+        {gatewayMode === 'remote' && (
+          <div className="space-y-2">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1 block">Gateway URL</Label>
+              <Input
+                placeholder="wss://oc-staging.amybot.ai"
+                value={remoteUrlDraft}
+                onChange={(e) => setRemoteUrlDraft(e.target.value)}
+                className="h-8 text-sm bg-black/20 border-white/10"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1 block">Auth Token</Label>
+              <Input
+                type="password"
+                placeholder="Gateway auth token"
+                value={remoteTokenDraft}
+                onChange={(e) => setRemoteTokenDraft(e.target.value)}
+                className="h-8 text-sm bg-black/20 border-white/10"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSaveRemoteGateway}
+              disabled={savingRemote || !remoteUrlDraft.trim()}
+              className="h-8 text-sm border-white/10 bg-transparent hover:bg-white/5"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-2", savingRemote && "animate-spin")} />
+              Connect
+            </Button>
+          </div>
+        )}
+      </div>
+
       <div className="space-y-3">
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
-          <span className="text-left">{t('runtime.nodejs')}</span>
-          <div className="flex justify-end">
-            {renderStatus(checks.nodejs.status, checks.nodejs.message)}
+        {gatewayMode === 'local' && (
+          <>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
+              <span className="text-left">{t('runtime.nodejs')}</span>
+              <div className="flex justify-end">
+                {renderStatus(checks.nodejs.status, checks.nodejs.message)}
+              </div>
+            </div>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
+              <div className="text-left min-w-0">
+                <span>{t('runtime.openclaw')}</span>
+                {openclawDir && (
+                  <p className="text-xs text-muted-foreground mt-0.5 font-mono break-all">
+                    {openclawDir}
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-end self-start mt-0.5">
+                {renderStatus(checks.openclaw.status, checks.openclaw.message)}
+              </div>
+            </div>
+          </>
+        )}
+        <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/50">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-left">
+              <span>{t('runtime.gateway')}</span>
+              {gatewayMode === 'local' && checks.gateway.status === 'error' && (
+                <Button variant="outline" size="sm" onClick={handleStartGateway}>
+                  {t('runtime.startGateway')}
+                </Button>
+              )}
+            </div>
+            <div className="flex justify-end shrink-0">
+              {checks.gateway.status !== 'error'
+                ? renderStatus(checks.gateway.status, checks.gateway.message)
+                : <XCircle className="h-5 w-5 text-red-400 shrink-0" />
+              }
+            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
-          <div className="text-left min-w-0">
-            <span>{t('runtime.openclaw')}</span>
-            {openclawDir && (
-              <p className="text-xs text-muted-foreground mt-0.5 font-mono break-all">
-                {openclawDir}
-              </p>
-            )}
-          </div>
-          <div className="flex justify-end self-start mt-0.5">
-            {renderStatus(checks.openclaw.status, checks.openclaw.message)}
-          </div>
-        </div>
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
-          <div className="flex items-center gap-2 text-left">
-            <span>{t('runtime.gateway')}</span>
-            {checks.gateway.status === 'error' && (
-              <Button variant="outline" size="sm" onClick={handleStartGateway}>
-                {t('runtime.startGateway')}
-              </Button>
-            )}
-          </div>
-          <div className="flex justify-end">
-            {renderStatus(checks.gateway.status, checks.gateway.message)}
-          </div>
+          {checks.gateway.status === 'error' && (
+            <p className="text-sm text-red-400 break-words leading-snug">
+              {checks.gateway.message}
+            </p>
+          )}
         </div>
       </div>
 
-      {(checks.nodejs.status === 'error' || checks.openclaw.status === 'error') && (
+      {gatewayMode === 'local' && (checks.nodejs.status === 'error' || checks.openclaw.status === 'error') && (
         <div className="mt-4 p-4 rounded-lg bg-red-900/20 border border-red-500/20">
           <div className="flex items-start gap-2">
             <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
             <div>
               <p className="font-medium text-red-400">{t('runtime.issue.title')}</p>
               <p className="text-sm text-muted-foreground mt-1">
-                {t('runtime.issue.desc')}
+                {checks.openclaw.status === 'error'
+                  ? 'Install OpenClaw globally: npm install -g openclaw'
+                  : t('runtime.issue.desc')}
               </p>
             </div>
           </div>
@@ -675,7 +839,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
       )}
 
       {/* Log viewer panel */}
-      {showLogs && (
+      {gatewayMode === 'local' && showLogs && (
         <div className="mt-4 p-4 rounded-lg bg-black/40 border border-border">
           <div className="flex items-center justify-between mb-2">
             <p className="font-medium text-foreground text-sm">{t('runtime.logs.title')}</p>
