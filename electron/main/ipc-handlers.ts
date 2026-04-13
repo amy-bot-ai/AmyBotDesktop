@@ -42,6 +42,7 @@ import {
 import { updateSkillConfig, getSkillConfig, getAllSkillConfigs } from '../utils/skill-config';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { getProviderConfig } from '../utils/provider-registry';
+import { listMcpServersFromFile, setMcpServerToFile, removeMcpServerFromFile, type McpServerConfig } from '../utils/mcp-config';
 import { deviceOAuthManager, OAuthProviderType } from '../utils/device-oauth';
 import { browserOAuthManager, type BrowserOAuthProviderType } from '../utils/browser-oauth';
 import { applyProxySettings } from './proxy';
@@ -2579,6 +2580,104 @@ function registerSessionHandlers(): void {
     } catch (err) {
       logger.error(`[session:delete] Unexpected error for ${sessionKey}:`, err);
       return { success: false, error: String(err) };
+    }
+  });
+
+  // MCP server config (local file fallback — used when gateway is stopped)
+  ipcMain.handle('mcp:list', async () => {
+    return listMcpServersFromFile();
+  });
+  ipcMain.handle('mcp:set', async (_, name: string, server: McpServerConfig) => {
+    await setMcpServerToFile(name, server);
+  });
+  ipcMain.handle('mcp:remove', async (_, name: string) => {
+    await removeMcpServerFromFile(name);
+  });
+
+  // MCP server probe — connect to an HTTP MCP server and list its available tools
+  ipcMain.handle('mcp:probe', async (_, _name: string, config: McpServerConfig): Promise<{
+    tools?: Array<{ name: string; description?: string; inputSchema?: unknown }>;
+    error?: string;
+  }> => {
+    if (!config.url) {
+      // stdio servers: tools load dynamically when the gateway starts a session
+      return { tools: [] };
+    }
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      };
+      // Forward configured headers (coerce to string)
+      if (config.headers) {
+        for (const [k, v] of Object.entries(config.headers)) {
+          headers[k] = String(v);
+        }
+      }
+      // Step 1: initialize
+      const initRes = await fetch(config.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: { name: 'amybot', version: '1.0' },
+          },
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!initRes.ok) {
+        return { error: `Server responded with HTTP ${initRes.status}` };
+      }
+      // Consume initialize body (SSE servers require this before the next request)
+      await initRes.text();
+      // Streamable-HTTP servers return an mcp-session-id that must be forwarded
+      const sessionId = initRes.headers.get('mcp-session-id');
+      const sessionHeaders = { ...headers };
+      if (sessionId) {
+        sessionHeaders['mcp-session-id'] = sessionId;
+      }
+      // Step 2: notifications/initialized (required by MCP spec before any method calls)
+      // Fire-and-forget — servers must not respond to notifications
+      await fetch(config.url, {
+        method: 'POST',
+        headers: sessionHeaders,
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+        signal: AbortSignal.timeout(5000),
+      }).catch(() => { /* notification response not required */ });
+      // Step 3: tools/list
+      const toolsRes = await fetch(config.url, {
+        method: 'POST',
+        headers: sessionHeaders,
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!toolsRes.ok) {
+        return { error: `tools/list responded with HTTP ${toolsRes.status}` };
+      }
+      // Parse response — may be plain JSON or SSE (text/event-stream)
+      const contentType = toolsRes.headers.get('content-type') ?? '';
+      let rawText = await toolsRes.text();
+      if (contentType.includes('text/event-stream') || rawText.trimStart().startsWith('event:') || rawText.trimStart().startsWith('data:')) {
+        // Extract JSON from SSE data lines: "data: {...}"
+        const dataLine = rawText.split('\n').find((l) => l.startsWith('data:'));
+        rawText = dataLine ? dataLine.slice('data:'.length).trim() : rawText;
+      }
+      const data = JSON.parse(rawText) as {
+        result?: { tools?: Array<{ name: string; description?: string; inputSchema?: unknown }> };
+        error?: { message?: string } | string;
+      };
+      if (data.error) {
+        const msg = typeof data.error === 'object' ? data.error.message : String(data.error);
+        return { error: msg ?? 'Unknown error from server' };
+      }
+      return { tools: data.result?.tools ?? [] };
+    } catch (err) {
+      return { error: String(err) };
     }
   });
 }

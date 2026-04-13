@@ -137,6 +137,11 @@ const electronAPI = {
         'openclaw:getConfigDir',
         'openclaw:getSkillsDir',
         'openclaw:getCliCommand',
+        // MCP server config (file fallback)
+        'mcp:list',
+        'mcp:set',
+        'mcp:remove',
+        'mcp:probe',
       ];
 
       if (validChannels.includes(channel)) {

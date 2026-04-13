@@ -41,6 +41,7 @@ import { useTranslation } from 'react-i18next';
 import { Models } from '@/pages/Models';
 import { Skills } from '@/pages/Skills';
 import { Channels } from '@/pages/Channels';
+import { Mcp } from '@/pages/Mcp';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { hostApiFetch } from '@/lib/host-api';
 import { cn } from '@/lib/utils';
@@ -59,7 +60,9 @@ export function Settings() {
       ? 'skills'
       : location.pathname.startsWith('/settings/channels')
         ? 'channels'
-        : 'general';
+        : location.pathname.startsWith('/settings/mcp')
+          ? 'mcp'
+          : 'general';
   const {
     theme,
     setTheme,
@@ -71,6 +74,8 @@ export function Settings() {
     setGatewayAutoStart,
     gatewayRemoteUrl,
     gatewayRemoteToken,
+    setGatewayRemoteUrl,
+    setGatewayRemoteToken,
     proxyEnabled,
     proxyServer,
     proxyHttpServer,
@@ -99,6 +104,9 @@ export function Settings() {
   const [controlUiInfo, setControlUiInfo] = useState<ControlUiInfo | null>(null);
   const [openclawCliCommand, setOpenclawCliCommand] = useState('');
   const [openclawCliError, setOpenclawCliError] = useState<string | null>(null);
+  const [gatewayMode, setGatewayMode] = useState<'local' | 'remote'>(() =>
+    gatewayRemoteUrl ? 'remote' : 'local'
+  );
   const [remoteUrlDraft, setRemoteUrlDraft] = useState('');
   const [remoteTokenDraft, setRemoteTokenDraft] = useState('');
   const [savingRemoteGateway, setSavingRemoteGateway] = useState(false);
@@ -630,45 +638,89 @@ export function Settings() {
                 />
               </div>
 
-              {/* Remote Gateway */}
+              {/* Gateway Mode */}
               <div className="space-y-4 p-4 rounded-2xl border border-black/8 dark:border-white/8 bg-black/[0.02] dark:bg-white/[0.02]">
-                <div>
-                  <Label className="text-[15px] font-medium text-foreground">Remote Gateway</Label>
-                  <p className="text-[13px] text-muted-foreground mt-1">
-                    Connect to a remote OpenClaw gateway instead of the local one (e.g. your VPS). Leave blank to use local.
+                {/* Mode toggle */}
+                <div className="flex items-center justify-between">
+                  <Label className="text-[15px] font-medium text-foreground">Gateway Mode</Label>
+                  <div className="flex items-center gap-1 p-1 rounded-lg bg-black/5 dark:bg-white/5">
+                    <button
+                      onClick={() => {
+                        if (gatewayMode === 'remote') {
+                          setGatewayMode('local');
+                          setGatewayRemoteUrl('');
+                          setGatewayRemoteToken('');
+                          void hostApiFetch('/api/settings', {
+                            method: 'PUT',
+                            body: JSON.stringify({ gatewayRemoteUrl: '', gatewayRemoteToken: '' }),
+                          });
+                        }
+                      }}
+                      className={cn(
+                        'px-3 py-1 rounded-md text-[13px] font-medium transition-all',
+                        gatewayMode === 'local'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Local
+                    </button>
+                    <button
+                      onClick={() => setGatewayMode('remote')}
+                      className={cn(
+                        'px-3 py-1 rounded-md text-[13px] font-medium transition-all',
+                        gatewayMode === 'remote'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Remote
+                    </button>
+                  </div>
+                </div>
+
+                {gatewayMode === 'local' ? (
+                  <p className="text-[13px] text-muted-foreground">
+                    Gateway runs locally on this machine using the bundled OpenClaw.
                   </p>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-[13px] text-muted-foreground mb-1.5 block">Gateway URL</Label>
-                    <Input
-                      placeholder="wss://oc-staging.amybot.ai"
-                      value={remoteUrlDraft}
-                      onChange={(e) => setRemoteUrlDraft(e.target.value)}
-                      className="h-9 text-[13px] rounded-xl border-black/10 dark:border-white/10 bg-transparent"
-                    />
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-[13px] text-muted-foreground">
+                      Connect to a remote OpenClaw gateway (e.g. your VPS or shared server).
+                    </p>
+                    <div>
+                      <Label className="text-[13px] text-muted-foreground mb-1.5 block">Gateway URL</Label>
+                      <Input
+                        placeholder="wss://oc-staging.amybot.ai"
+                        value={remoteUrlDraft}
+                        onChange={(e) => setRemoteUrlDraft(e.target.value)}
+                        className="h-9 text-[13px] rounded-xl border-black/10 dark:border-white/10 bg-transparent"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[13px] text-muted-foreground mb-1.5 block">Gateway Token</Label>
+                      <Input
+                        type="password"
+                        placeholder="Remote gateway auth token"
+                        value={remoteTokenDraft}
+                        onChange={(e) => setRemoteTokenDraft(e.target.value)}
+                        className="h-9 text-[13px] rounded-xl border-black/10 dark:border-white/10 bg-transparent"
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={handleSaveRemoteGateway}
+                      disabled={savingRemoteGateway}
+                      className="rounded-xl h-9 px-4 text-[13px] bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 mr-2${savingRemoteGateway ? ' animate-spin' : ''}`} />
+                      Save & Reconnect
+                    </Button>
                   </div>
-                  <div>
-                    <Label className="text-[13px] text-muted-foreground mb-1.5 block">Gateway Token</Label>
-                    <Input
-                      type="password"
-                      placeholder="Remote gateway auth token"
-                      value={remoteTokenDraft}
-                      onChange={(e) => setRemoteTokenDraft(e.target.value)}
-                      className="h-9 text-[13px] rounded-xl border-black/10 dark:border-white/10 bg-transparent"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={handleSaveRemoteGateway}
-                    disabled={savingRemoteGateway}
-                    className="rounded-xl h-9 px-4 text-[13px] bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 mr-2${savingRemoteGateway ? ' animate-spin' : ''}`} />
-                    Save & Reconnect
-                  </Button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
+                )}
+
+                {/* Status + controls */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-black/5 dark:border-white/5">
                   <div className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium border",
                     gatewayStatus.state === 'running' ? "bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20" :
@@ -1195,6 +1247,11 @@ export function Settings() {
         {activeTab === 'channels' && (
           <div className="flex-1 min-h-0 overflow-hidden">
             <Channels />
+          </div>
+        )}
+        {activeTab === 'mcp' && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <Mcp />
           </div>
         )}
       </div>

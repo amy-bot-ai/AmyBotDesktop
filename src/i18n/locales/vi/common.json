@@ -14,7 +14,8 @@
         "devConsole": "Bảng điều khiển nhà phát triển",
         "models": "Mô hình",
         "deleteSessionConfirm": "Bạn có chắc muốn xóa phiên \"{{label}}\"?",
-        "openClawPage": "Trang OpenClaw"
+        "openClawPage": "Trang OpenClaw",
+        "mcp": "Máy chủ MCP"
     },
     "actions": {
         "save": "Lưu",

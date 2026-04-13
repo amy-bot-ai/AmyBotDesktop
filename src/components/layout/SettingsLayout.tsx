@@ -4,7 +4,7 @@
  * Replaces the main app sidebar when the user enters Settings.
  */
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings2, Cpu, BookOpen, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Settings2, Cpu, BookOpen, MessageSquare, Server } from 'lucide-react';
 import { TitleBar } from './TitleBar';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,7 @@ const menuItems = [
   { id: 'models',   path: '/settings/models',   icon: Cpu,          labelKey: 'models' },
   { id: 'skills',   path: '/settings/skills',   icon: BookOpen,     labelKey: 'skills' },
   { id: 'channels', path: '/settings/channels', icon: MessageSquare, labelKey: 'channels' },
+  { id: 'mcp',      path: '/settings/mcp',      icon: Server,        labelKey: 'mcp' },
 ];
 
 export function SettingsLayout() {

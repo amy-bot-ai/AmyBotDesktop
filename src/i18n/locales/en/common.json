@@ -14,7 +14,8 @@
         "devConsole": "Developer Console",
         "models": "Models",
         "deleteSessionConfirm": "Are you sure you want to delete session \"{{label}}\"?",
-        "openClawPage": "OpenClaw Page"
+        "openClawPage": "OpenClaw Page",
+        "mcp": "MCP Servers"
     },
     "actions": {
         "save": "Save",
