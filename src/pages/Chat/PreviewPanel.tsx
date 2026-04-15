@@ -10,7 +10,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
   Eye,
   Code2,
   Download,
@@ -77,13 +76,6 @@ export function PreviewPanel({
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
     setDropdownOpen(false);
-  };
-
-  const handleOpenInTab = () => {
-    const blob = new Blob([artifact.content], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank', 'noopener,noreferrer');
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   };
 
   return (
@@ -198,28 +190,9 @@ export function PreviewPanel({
                   <Download className="h-3.5 w-3.5" />
                   Download .{fileExt}
                 </button>
-                {isHtml && (
-                  <button
-                    onClick={() => { handleOpenInTab(); setDropdownOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-foreground/80 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Open in tab
-                  </button>
-                )}
               </div>
             )}
           </div>
-
-          {isHtml && (
-            <button
-              onClick={handleOpenInTab}
-              className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
-              title="Open in new tab"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </button>
-          )}
 
           <button
             onClick={onClose}
