@@ -4,7 +4,7 @@
  * via gateway:rpc IPC. Session selector, thinking toggle, and refresh
  * are in the toolbar; messages render with markdown + streaming.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import { useChatStore, type RawMessage } from '@/stores/chat';
 import { useGatewayStore } from '@/stores/gateway';
@@ -15,7 +15,12 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ExecutionGraphCard } from './ExecutionGraphCard';
 import { ChatToolbar } from './ChatToolbar';
-import { extractImages, extractText, extractThinking, extractToolUse } from './message-utils';
+import { PreviewPanel } from './PreviewPanel';
+import {
+  extractImages, extractText, extractThinking, extractToolUse,
+  extractPreviewBlocks, extractArtifactTitle,
+} from './message-utils';
+import type { Artifact, ArtifactInput } from './message-utils';
 import { deriveTaskSteps, parseSubagentCompletionInfo } from './task-visualization';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -27,7 +32,52 @@ export function Chat() {
   const gatewayStatus = useGatewayStore((s) => s.status);
   const isGatewayRunning = gatewayStatus.state === 'running';
 
-  const messages = useChatStore((s) => s.messages);
+  const rawMessages = useChatStore((s) => s.messages);
+
+  // Deduplicate messages to guard against a race condition where the history
+  // poll delivers a message from the server at the same time as the WebSocket
+  // final event appends the same message locally, resulting in two entries.
+  // Deduplicate messages:
+  // 1. Primary: by id (when present)
+  // 2. Fallback: by role+timestamp+content (when no id)
+  // 3. Secondary: by timestamp+content fingerprint for assistant messages —
+  //    catches the race where a history poll and the streaming final event both
+  //    commit the same message with different ids (one server-assigned, one
+  //    synthesized as "run-${runId}").
+  const messages = useMemo<RawMessage[]>(() => {
+    // DEBUG: log raw messages to find duplicate root cause
+    if (rawMessages.filter(m => m.role === 'assistant').length > 1) {
+      const assistants = rawMessages.filter(m => m.role === 'assistant');
+      console.warn('[dedup-debug] Multiple assistant messages in rawMessages:', assistants.map(m => ({
+        id: m.id,
+        timestamp: m.timestamp,
+        contentType: typeof m.content,
+        textPreview: (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).slice(0, 80),
+      })));
+    }
+    const seen = new Set<string>();
+    const assistantFingerprints = new Set<string>();
+    return rawMessages.filter((msg) => {
+      const key = msg.id
+        ? `id:${msg.id}`
+        : `rc:${msg.role}|${msg.timestamp ?? ''}|${typeof msg.content === 'string' ? msg.content.slice(0, 120) : JSON.stringify(msg.content).slice(0, 120)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      // Secondary dedup for assistant messages: same timestamp + extracted text = same message,
+      // regardless of whether content is a plain string or a content-blocks array, and
+      // regardless of whether the id came from the server or was synthesized locally.
+      if (msg.role === 'assistant') {
+        const text = extractText(msg as Parameters<typeof extractText>[0]);
+        // Normalize timestamp to whole seconds to compare across ms vs seconds formats
+        const rawTs = Number(msg.timestamp ?? 0);
+        const tsSeconds = rawTs > 1e12 ? Math.round(rawTs / 1000) : Math.round(rawTs);
+        const fp = `${tsSeconds}|${text.slice(0, 500)}`;
+        if (assistantFingerprints.has(fp)) return false;
+        assistantFingerprints.add(fp);
+      }
+      return true;
+    });
+  }, [rawMessages]);
   const currentSessionKey = useChatStore((s) => s.currentSessionKey);
   const currentAgentId = useChatStore((s) => s.currentAgentId);
   const sessionLabels = useChatStore((s) => s.sessionLabels);
@@ -47,6 +97,18 @@ export function Chat() {
 
   const cleanupEmptySession = useChatStore((s) => s.cleanupEmptySession);
   const [childTranscripts, setChildTranscripts] = useState<Record<string, RawMessage[]>>({});
+
+  // ── Artifact panel state (Claude Desktop style) ─────────────────
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const prevArtifactCount = useRef(0);
+
+  // Resizable split panel
+  const [panelWidth, setPanelWidth] = useState(46);
+  const panelWidthRef = useRef(46);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [streamingTimestamp, setStreamingTimestamp] = useState<number>(0);
   const minLoading = useMinLoading(loading && messages.length > 0);
@@ -128,6 +190,14 @@ export function Chat() {
     }
   }, [sending, streamingTimestamp]);
 
+  // Clear artifacts when switching sessions
+  useEffect(() => {
+    setArtifacts([]);
+    setActiveArtifactIndex(0);
+    setPanelOpen(false);
+    prevArtifactCount.current = 0;
+  }, [currentSessionKey]);
+
   // Gateway not running block has been completely removed so the UI always renders.
 
   const streamMsg = streamingMessage && typeof streamingMessage === 'object'
@@ -144,6 +214,98 @@ export function Chat() {
   const hasStreamToolStatus = streamingTools.length > 0;
   const shouldRenderStreaming = sending && (hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus);
   const hasAnyStreamContent = hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus;
+
+  // Build the artifact list from all messages + streaming text.
+  // Must live after streamText is derived above.
+  useEffect(() => {
+    const found: Artifact[] = [];
+    const seen = new Set<string>();
+
+    const scanText = (text: string) => {
+      for (const block of extractPreviewBlocks(text)) {
+        // Use trimmed content as dedup key to avoid near-identical duplicates
+        const id = `${block.type}::${block.content.trim()}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        found.push({
+          id,
+          type: block.type,
+          content: block.content,
+          title: extractArtifactTitle(block.type, block.content),
+        });
+      }
+    };
+
+    for (const msg of messages) {
+      scanText(extractText(msg));
+    }
+    if (streamText) scanText(streamText);
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setArtifacts(found);
+
+    // Auto-open panel whenever a new artifact appears
+    if (found.length > prevArtifactCount.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveArtifactIndex(found.length - 1);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPanelOpen(true);
+    }
+    prevArtifactCount.current = found.length;
+  }, [messages, streamText]);
+
+  const handleOpenArtifact = useCallback((input: ArtifactInput) => {
+    // Find by type + content; if missing (e.g. partial stream), append temporarily
+    setArtifacts((current) => {
+      const idx = current.findIndex(
+        (a) => a.type === input.type && a.content === input.content,
+      );
+      if (idx !== -1) {
+        setActiveArtifactIndex(idx);
+        setPanelOpen(true);
+        return current;
+      }
+      // Not yet in the list — add it on the fly
+      const newArtifact: Artifact = {
+        id: `manual::${Date.now()}`,
+        ...input,
+      };
+      setActiveArtifactIndex(current.length);
+      setPanelOpen(true);
+      return [...current, newArtifact];
+    });
+  }, []);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidthRef.current;
+
+    setIsDragging(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev: MouseEvent) => {
+      const containerWidth =
+        splitContainerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+      // Drag left → panel grows; drag right → panel shrinks
+      const deltaPercent = ((startX - ev.clientX) / containerWidth) * 100;
+      const next = Math.min(70, Math.max(20, startWidth + deltaPercent));
+      panelWidthRef.current = next;
+      setPanelWidth(next);
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
 
   const isEmpty = messages.length === 0 && !sending;
   const subagentCompletionInfos = messages.map((message) => parseSubagentCompletionInfo(message));
@@ -236,9 +398,20 @@ export function Chat() {
 
       {/* Messages Area */}
       <div className="min-h-0 flex-1 overflow-hidden py-4">
-        <div className="mx-auto flex h-full min-h-0 max-w-6xl flex-col gap-4 lg:flex-row lg:items-stretch">
+        <div
+          ref={splitContainerRef}
+          className={cn(
+            "flex h-full min-h-0 gap-0",
+            panelOpen && artifacts.length > 0
+              ? "w-full"
+              : "mx-auto max-w-6xl flex-col lg:flex-row lg:items-stretch",
+          )}
+        >
           <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-            <div ref={contentRef} className="max-w-4xl mx-auto space-y-4 px-4">
+            <div ref={contentRef} className={cn(
+              "mx-auto space-y-4 px-4",
+              panelOpen && artifacts.length > 0 ? "max-w-2xl" : "max-w-4xl",
+            )}>
               {isEmpty ? (
                 <WelcomeScreen />
               ) : (
@@ -259,6 +432,7 @@ export function Chat() {
                         showThinking={showThinking}
                         suppressToolCards={suppressToolCards}
                         suppressProcessAttachments={suppressToolCards}
+                        onPreview={handleOpenArtifact}
                       />
                       {showGraph && userRunCards
                         .filter((card) => card.triggerIndex === idx)
@@ -306,6 +480,7 @@ export function Chat() {
                       showThinking={showThinking}
                       isStreaming
                       streamingTools={streamingTools}
+                      onPreview={handleOpenArtifact}
                     />
                   )}
 
@@ -323,6 +498,40 @@ export function Chat() {
             </div>
           </div>
 
+          {/* Drag handle + Artifact preview panel */}
+          {panelOpen && artifacts.length > 0 && (
+            <>
+              {/* Resizable divider */}
+              <div
+                onMouseDown={handleResizeStart}
+                className="group relative w-1 shrink-0 cursor-col-resize bg-black/10 dark:bg-white/10 hover:bg-primary/30 active:bg-primary/50 transition-colors"
+              >
+                {/* Drag-active overlay — covers the entire viewport (incl. iframe) so
+                    mouse events are never swallowed by child iframes during resize */}
+                {isDragging && (
+                  <div className="fixed inset-0 z-[9999] cursor-col-resize" />
+                )}
+                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center gap-[5px] pointer-events-none">
+                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                </div>
+              </div>
+
+              {/* Panel wrapper — width controlled by drag */}
+              <div
+                style={{ width: `${panelWidth}%` }}
+                className="shrink-0 min-w-[240px] overflow-hidden"
+              >
+                <PreviewPanel
+                  artifacts={artifacts}
+                  activeIndex={activeArtifactIndex}
+                  onNavigate={setActiveArtifactIndex}
+                  onClose={() => setPanelOpen(false)}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
