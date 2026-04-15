@@ -4,7 +4,7 @@
  * with markdown, thinking sections, images, and tool cards.
  */
 import { useState, useCallback, useEffect, memo } from 'react';
-import { Copy, Check, ChevronDown, ChevronRight, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronRight, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle, FileCode2, Eye } from 'lucide-react';
 import logoSvg from '@/assets/logo.svg';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,11 +13,13 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { invokeIpc } from '@/lib/api-client';
 import type { RawMessage, AttachedFileMeta } from '@/stores/chat';
-import { extractText, extractThinking, extractImages, extractToolUse, formatTimestamp } from './message-utils';
+import { extractText, extractThinking, extractImages, extractToolUse, formatTimestamp, extractArtifactTitle, extractPreviewBlocks } from './message-utils';
+import type { ArtifactInput } from './message-utils';
 
 interface ChatMessageProps {
   message: RawMessage;
   showThinking: boolean;
+  onPreview?: (artifact: ArtifactInput) => void;
   suppressToolCards?: boolean;
   suppressProcessAttachments?: boolean;
   isStreaming?: boolean;
@@ -47,6 +49,7 @@ export const ChatMessage = memo(function ChatMessage({
   suppressProcessAttachments = false,
   isStreaming = false,
   streamingTools = [],
+  onPreview,
 }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const role = typeof message.role === 'string' ? message.role.toLowerCase() : '';
@@ -170,6 +173,7 @@ export const ChatMessage = memo(function ChatMessage({
             text={text}
             isUser={isUser}
             isStreaming={isStreaming}
+            onPreview={onPreview}
           />
         )}
 
@@ -232,7 +236,7 @@ export const ChatMessage = memo(function ChatMessage({
 
         {/* Hover row for assistant messages — only when there is real text content */}
         {!isUser && hasText && (
-          <AssistantHoverBar text={text} timestamp={message.timestamp} />
+          <AssistantHoverBar text={text} timestamp={message.timestamp} onPreview={onPreview} />
         )}
       </div>
 
@@ -303,7 +307,15 @@ function ToolStatusBar({
 
 // ── Assistant hover bar (timestamp + copy, shown on group hover) ─
 
-function AssistantHoverBar({ text, timestamp }: { text: string; timestamp?: number }) {
+function AssistantHoverBar({
+  text,
+  timestamp,
+  onPreview,
+}: {
+  text: string;
+  timestamp?: number;
+  onPreview?: (artifact: ArtifactInput) => void;
+}) {
   const [copied, setCopied] = useState(false);
 
   const copyContent = useCallback(() => {
@@ -312,34 +324,130 @@ function AssistantHoverBar({ text, timestamp }: { text: string; timestamp?: numb
     setTimeout(() => setCopied(false), 2000);
   }, [text]);
 
+  const previewBlocks = extractPreviewBlocks(text);
+  const hasPreviewable = previewBlocks.length > 0;
+
+  const handlePreview = useCallback(() => {
+    if (!onPreview || previewBlocks.length === 0) return;
+    const last = previewBlocks[previewBlocks.length - 1];
+    onPreview({
+      type: last.type,
+      content: last.content,
+      title: extractArtifactTitle(last.type, last.content),
+    });
+  }, [onPreview, previewBlocks]);
+
   return (
     <div className="flex items-center justify-between w-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none px-1">
       <span className="text-xs text-muted-foreground">
         {timestamp ? formatTimestamp(timestamp) : ''}
       </span>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6"
-        onClick={copyContent}
+      <div className="flex items-center gap-0.5">
+        {onPreview && hasPreviewable && (
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handlePreview} title="Open preview">
+            <Eye className="h-3 w-3" />
+          </Button>
+        )}
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyContent}>
+          {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Artifact Card (Claude Desktop style) ───────────────────────
+
+function ArtifactCard({
+  type,
+  title,
+  className,
+  onClick,
+}: {
+  type: 'html' | 'markdown';
+  title: string;
+  className?: string;
+  onClick: () => void;
+}) {
+  const label = type === 'html' ? 'HTML' : 'MD';
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={cn(
+        'flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 bg-background px-3 py-2.5 transition-colors cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
+        className,
+      )}
+      onClick={onClick}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+    >
+      {/* Icon */}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-black/8 dark:border-white/8 bg-black/[0.03] dark:bg-white/[0.03]">
+        {type === 'html' ? (
+          <FileCode2 className="h-4 w-4 text-foreground/50" />
+        ) : (
+          <FileText className="h-4 w-4 text-foreground/50" />
+        )}
+      </div>
+
+      {/* Text */}
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-medium text-foreground/90 truncate leading-snug">{title}</p>
+        <p className="text-[11px] text-muted-foreground leading-snug">
+          Document&nbsp;·&nbsp;{label}
+        </p>
+      </div>
+
+      {/* Open button */}
+      <button
+        className="shrink-0 flex items-center gap-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-background px-2.5 py-1.5 text-[12px] font-medium text-foreground/70 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
+        tabIndex={-1}
       >
-        {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-      </Button>
+        <Eye className="h-3 w-3" />
+        Open
+      </button>
     </div>
   );
 }
 
 // ── Message Bubble ──────────────────────────────────────────────
 
+const ARTIFACT_LANGS = new Set(['html', 'htm', 'markdown', 'md']);
+
+/**
+ * Returns true if the text looks like a standalone markdown document
+ * (starts with a markdown heading and has substantial content).
+ */
+function isMarkdownDocument(text: string): boolean {
+  const trimmed = text.trimStart();
+  return /^#{1,3} .+/m.test(trimmed) && text.length > 400;
+}
+
 function MessageBubble({
   text,
   isUser,
   isStreaming,
+  onPreview,
 }: {
   text: string;
   isUser: boolean;
   isStreaming: boolean;
+  onPreview?: (artifact: ArtifactInput) => void;
 }) {
+  // Whole message looks like a markdown document → compact artifact card
+  if (!isUser && onPreview && !isStreaming && isMarkdownDocument(text) && extractPreviewBlocks(text).length === 0) {
+    const title = extractArtifactTitle('markdown', text);
+    return (
+      <ArtifactCard
+        type="markdown"
+        title={title}
+        className="w-full"
+        onClick={() => onPreview({ type: 'markdown', content: text, title })}
+      />
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -367,6 +475,27 @@ function MessageBubble({
                     </code>
                   );
                 }
+                const lang = match?.[1]?.toLowerCase() ?? '';
+                const codeContent = Array.isArray(children)
+                  ? children.map(String).join('')
+                  : String(children ?? '');
+
+                // Previewable langs → artifact card (Claude Desktop style)
+                if (ARTIFACT_LANGS.has(lang) && onPreview) {
+                  const type: 'html' | 'markdown' =
+                    lang === 'html' || lang === 'htm' ? 'html' : 'markdown';
+                  const title = extractArtifactTitle(type, codeContent);
+                  return (
+                    <ArtifactCard
+                      type={type}
+                      title={title}
+                      className="not-prose my-1"
+                      onClick={() => onPreview({ type, content: codeContent, title })}
+                    />
+                  );
+                }
+
+                // Regular code block
                 return (
                   <pre className="bg-background/50 rounded-lg p-4 overflow-x-auto">
                     <code className={cn('text-sm font-mono', className)} {...props}>
@@ -391,7 +520,6 @@ function MessageBubble({
           )}
         </div>
       )}
-
     </div>
   );
 }

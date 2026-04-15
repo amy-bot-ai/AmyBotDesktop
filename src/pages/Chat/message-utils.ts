@@ -202,6 +202,64 @@ export function extractToolUse(message: RawMessage | unknown): Array<{ id: strin
 }
 
 /**
+ * Represents a previewable code block extracted from message text.
+ */
+export type PreviewBlock = { type: 'html' | 'markdown'; content: string };
+
+/** The data passed when a user opens an artifact from the inline card. */
+export interface ArtifactInput {
+  type: 'html' | 'markdown';
+  content: string;
+  title: string;
+}
+
+/** A resolved artifact tracked in the conversation panel. */
+export interface Artifact {
+  id: string;
+  type: 'html' | 'markdown';
+  content: string;
+  title: string;
+}
+
+/**
+ * Derive a human-readable title from artifact content.
+ * HTML: <title> tag → first <h1> text → fallback.
+ * Markdown: first # heading → fallback.
+ */
+export function extractArtifactTitle(type: 'html' | 'markdown', content: string): string {
+  if (type === 'html') {
+    const titleMatch = /<title[^>]*>([^<]*)<\/title>/i.exec(content);
+    if (titleMatch?.[1]?.trim()) return titleMatch[1].trim();
+    const h1Match = /<h1[^>]*>([^<]*)<\/h1>/i.exec(content);
+    if (h1Match?.[1]?.trim()) return h1Match[1].replace(/<[^>]+>/g, '').trim();
+    return 'HTML Document';
+  }
+  const headingMatch = /^#{1,3}\s+(.+)$/m.exec(content);
+  if (headingMatch?.[1]?.trim()) return headingMatch[1].trim();
+  return 'Markdown Document';
+}
+
+/**
+ * Extract previewable code blocks (html / markdown / md / htm) from message text.
+ * Returns all matched blocks in order; caller can pick the last one for "most recent".
+ */
+export function extractPreviewBlocks(text: string): PreviewBlock[] {
+  const blocks: PreviewBlock[] = [];
+  // Match ```lang[\n content\n```  – optional extra text after lang tag is ignored
+  const regex = /```(html|htm|markdown|md)(?:[^\n]*)?\n([\s\S]*?)```/gi;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const lang = match[1].toLowerCase();
+    const type: 'html' | 'markdown' = lang === 'html' || lang === 'htm' ? 'html' : 'markdown';
+    const content = match[2];
+    if (content.trim()) {
+      blocks.push({ type, content });
+    }
+  }
+  return blocks;
+}
+
+/**
  * Format a Unix timestamp (seconds) to relative time string.
  */
 export function formatTimestamp(timestamp: unknown): string {
