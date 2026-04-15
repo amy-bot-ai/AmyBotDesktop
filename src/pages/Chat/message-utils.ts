@@ -246,7 +246,8 @@ export function extractArtifactTitle(type: ArtifactType, content: string): strin
     return 'SVG Image';
   }
   if (type === 'jsx' || type === 'tsx') {
-    const match = /(?:export\s+default\s+function\s+(\w+)|(?:export\s+default\s+)?(?:function|const)\s+([A-Z]\w*)\s*[=(])/m.exec(content);
+    // Handles: export default function Foo, function Foo(, const Foo =, export const Foo:
+    const match = /(?:export\s+default\s+function\s+(\w+)|(?:export\s+)?(?:default\s+)?(?:function|const)\s+([A-Z]\w*)\s*(?:[:=(<]))/m.exec(content);
     const name = match?.[1] || match?.[2];
     if (name) return name;
     return type === 'tsx' ? 'TSX Component' : 'JSX Component';
@@ -273,18 +274,27 @@ const LANG_TO_TYPE: Record<string, ArtifactType> = {
  * Extract previewable code blocks (html / markdown / svg / jsx / tsx / css) from message text.
  * Returns all matched blocks in order; caller can pick the last one for "most recent".
  */
+/**
+ * Re-classify an artifact type based on actual content.
+ * Handles the common case where LLMs wrap SVG in ```html fences.
+ */
+function resolveType(lang: string, content: string): ArtifactType {
+  const base = LANG_TO_TYPE[lang];
+  if ((base === 'html') && /^\s*<svg[\s>]/i.test(content)) return 'svg';
+  return base;
+}
+
 export function extractPreviewBlocks(text: string): PreviewBlock[] {
   const blocks: PreviewBlock[] = [];
-  // Match ```lang[\n content\n```  – optional extra text after lang tag is ignored
-  const regex = /```(html|htm|markdown|md|svg|jsx|tsx|css)(?:[^\n]*)?\n([\s\S]*?)```/gi;
+  // Match ```lang ... content ... ``` — trailing space/tab on closing fence is allowed
+  const regex = /```(html|htm|markdown|md|svg|jsx|tsx|css)(?:[^\n]*)?\n([\s\S]*?)```[ \t]*/gi;
   let match;
   while ((match = regex.exec(text)) !== null) {
     const lang = match[1].toLowerCase();
-    const type = LANG_TO_TYPE[lang];
     const content = match[2];
-    if (type && content.trim()) {
-      blocks.push({ type, content });
-    }
+    if (!content.trim()) continue;
+    const type = resolveType(lang, content);
+    if (type) blocks.push({ type, content });
   }
   return blocks;
 }

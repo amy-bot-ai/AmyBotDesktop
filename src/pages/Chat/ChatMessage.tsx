@@ -358,14 +358,16 @@ function AssistantHoverBar({
 
 // ── Artifact Card (Claude Desktop style) ───────────────────────
 
-const ARTIFACT_ICON: Record<ArtifactType, ReactNode> = {
-  html:     <FileCode2 className="h-4 w-4 text-foreground/50" />,
-  markdown: <FileText className="h-4 w-4 text-foreground/50" />,
-  svg:      <Image className="h-4 w-4 text-foreground/50" />,
-  jsx:      <Braces className="h-4 w-4 text-foreground/50" />,
-  tsx:      <Braces className="h-4 w-4 text-foreground/50" />,
-  css:      <Paintbrush className="h-4 w-4 text-foreground/50" />,
-};
+function artifactIcon(type: ArtifactType): ReactNode {
+  switch (type) {
+    case 'html':     return <FileCode2  className="h-4 w-4 text-foreground/50" />;
+    case 'markdown': return <FileText   className="h-4 w-4 text-foreground/50" />;
+    case 'svg':      return <Image      className="h-4 w-4 text-foreground/50" />;
+    case 'jsx':
+    case 'tsx':      return <Braces     className="h-4 w-4 text-foreground/50" />;
+    case 'css':      return <Paintbrush className="h-4 w-4 text-foreground/50" />;
+  }
+}
 
 const ARTIFACT_SUBLABEL: Record<ArtifactType, string> = {
   html:     'Document · HTML',
@@ -400,7 +402,7 @@ function ArtifactCard({
     >
       {/* Icon */}
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-black/8 dark:border-white/8 bg-black/[0.03] dark:bg-white/[0.03]">
-        {ARTIFACT_ICON[type] ?? <FileCode2 className="h-4 w-4 text-foreground/50" />}
+        {artifactIcon(type)}
       </div>
 
       {/* Text */}
@@ -501,7 +503,10 @@ function MessageBubble({
 
                 // Previewable langs → artifact card (Claude Desktop style)
                 if (ARTIFACT_LANGS.has(lang) && onPreview) {
-                  const type: ArtifactType = LANG_TO_ARTIFACT_TYPE[lang] ?? 'html';
+                  const baseType = LANG_TO_ARTIFACT_TYPE[lang] ?? 'html';
+                  // Re-classify: LLMs often wrap SVG in ```html fences
+                  const type: ArtifactType =
+                    baseType === 'html' && /^\s*<svg[\s>]/i.test(codeContent) ? 'svg' : baseType;
                   const title = extractArtifactTitle(type, codeContent);
                   return (
                     <ArtifactCard
