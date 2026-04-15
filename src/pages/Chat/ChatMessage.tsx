@@ -3,8 +3,8 @@
  * Renders user / assistant / system / toolresult messages
  * with markdown, thinking sections, images, and tool cards.
  */
-import { useState, useCallback, useEffect, memo } from 'react';
-import { Copy, Check, ChevronDown, ChevronRight, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle, FileCode2, Eye } from 'lucide-react';
+import { useState, useCallback, useEffect, memo, type ReactNode } from 'react';
+import { Copy, Check, ChevronDown, ChevronRight, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle, FileCode2, Eye, Image, Braces, Paintbrush } from 'lucide-react';
 import logoSvg from '@/assets/logo.svg';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { invokeIpc } from '@/lib/api-client';
 import type { RawMessage, AttachedFileMeta } from '@/stores/chat';
 import { extractText, extractThinking, extractImages, extractToolUse, formatTimestamp, extractArtifactTitle, extractPreviewBlocks } from './message-utils';
-import type { ArtifactInput } from './message-utils';
+import type { ArtifactInput, ArtifactType } from './message-utils';
 
 interface ChatMessageProps {
   message: RawMessage;
@@ -358,18 +358,35 @@ function AssistantHoverBar({
 
 // ── Artifact Card (Claude Desktop style) ───────────────────────
 
+const ARTIFACT_ICON: Record<ArtifactType, ReactNode> = {
+  html:     <FileCode2 className="h-4 w-4 text-foreground/50" />,
+  markdown: <FileText className="h-4 w-4 text-foreground/50" />,
+  svg:      <Image className="h-4 w-4 text-foreground/50" />,
+  jsx:      <Braces className="h-4 w-4 text-foreground/50" />,
+  tsx:      <Braces className="h-4 w-4 text-foreground/50" />,
+  css:      <Paintbrush className="h-4 w-4 text-foreground/50" />,
+};
+
+const ARTIFACT_SUBLABEL: Record<ArtifactType, string> = {
+  html:     'Document · HTML',
+  markdown: 'Document · MD',
+  svg:      'Image · SVG',
+  jsx:      'Component · JSX',
+  tsx:      'Component · TSX',
+  css:      'Stylesheet · CSS',
+};
+
 function ArtifactCard({
   type,
   title,
   className,
   onClick,
 }: {
-  type: 'html' | 'markdown';
+  type: ArtifactType;
   title: string;
   className?: string;
   onClick: () => void;
 }) {
-  const label = type === 'html' ? 'HTML' : 'MD';
   return (
     <div
       role="button"
@@ -383,18 +400,14 @@ function ArtifactCard({
     >
       {/* Icon */}
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-black/8 dark:border-white/8 bg-black/[0.03] dark:bg-white/[0.03]">
-        {type === 'html' ? (
-          <FileCode2 className="h-4 w-4 text-foreground/50" />
-        ) : (
-          <FileText className="h-4 w-4 text-foreground/50" />
-        )}
+        {ARTIFACT_ICON[type] ?? <FileCode2 className="h-4 w-4 text-foreground/50" />}
       </div>
 
       {/* Text */}
       <div className="flex-1 min-w-0">
         <p className="text-[13px] font-medium text-foreground/90 truncate leading-snug">{title}</p>
         <p className="text-[11px] text-muted-foreground leading-snug">
-          Document&nbsp;·&nbsp;{label}
+          {ARTIFACT_SUBLABEL[type] ?? type.toUpperCase()}
         </p>
       </div>
 
@@ -413,7 +426,13 @@ function ArtifactCard({
 
 // ── Message Bubble ──────────────────────────────────────────────
 
-const ARTIFACT_LANGS = new Set(['html', 'htm', 'markdown', 'md']);
+const ARTIFACT_LANGS = new Set(['html', 'htm', 'markdown', 'md', 'svg', 'jsx', 'tsx', 'css']);
+
+const LANG_TO_ARTIFACT_TYPE: Record<string, ArtifactType> = {
+  html: 'html', htm: 'html',
+  markdown: 'markdown', md: 'markdown',
+  svg: 'svg', jsx: 'jsx', tsx: 'tsx', css: 'css',
+};
 
 /**
  * Returns true if the text looks like a standalone markdown document
@@ -482,8 +501,7 @@ function MessageBubble({
 
                 // Previewable langs → artifact card (Claude Desktop style)
                 if (ARTIFACT_LANGS.has(lang) && onPreview) {
-                  const type: 'html' | 'markdown' =
-                    lang === 'html' || lang === 'htm' ? 'html' : 'markdown';
+                  const type: ArtifactType = LANG_TO_ARTIFACT_TYPE[lang] ?? 'html';
                   const title = extractArtifactTitle(type, codeContent);
                   return (
                     <ArtifactCard

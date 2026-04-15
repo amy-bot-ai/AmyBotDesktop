@@ -201,14 +201,17 @@ export function extractToolUse(message: RawMessage | unknown): Array<{ id: strin
   return tools;
 }
 
+/** All previewable artifact types. */
+export type ArtifactType = 'html' | 'markdown' | 'svg' | 'jsx' | 'tsx' | 'css';
+
 /**
  * Represents a previewable code block extracted from message text.
  */
-export type PreviewBlock = { type: 'html' | 'markdown'; content: string };
+export type PreviewBlock = { type: ArtifactType; content: string };
 
 /** The data passed when a user opens an artifact from the inline card. */
 export interface ArtifactInput {
-  type: 'html' | 'markdown';
+  type: ArtifactType;
   content: string;
   title: string;
 }
@@ -216,7 +219,7 @@ export interface ArtifactInput {
 /** A resolved artifact tracked in the conversation panel. */
 export interface Artifact {
   id: string;
-  type: 'html' | 'markdown';
+  type: ArtifactType;
   content: string;
   title: string;
 }
@@ -225,8 +228,11 @@ export interface Artifact {
  * Derive a human-readable title from artifact content.
  * HTML: <title> tag → first <h1> text → fallback.
  * Markdown: first # heading → fallback.
+ * SVG: <title> tag → fallback.
+ * JSX/TSX: exported/defined component name → fallback.
+ * CSS: fallback.
  */
-export function extractArtifactTitle(type: 'html' | 'markdown', content: string): string {
+export function extractArtifactTitle(type: ArtifactType, content: string): string {
   if (type === 'html') {
     const titleMatch = /<title[^>]*>([^<]*)<\/title>/i.exec(content);
     if (titleMatch?.[1]?.trim()) return titleMatch[1].trim();
@@ -234,25 +240,49 @@ export function extractArtifactTitle(type: 'html' | 'markdown', content: string)
     if (h1Match?.[1]?.trim()) return h1Match[1].replace(/<[^>]+>/g, '').trim();
     return 'HTML Document';
   }
+  if (type === 'svg') {
+    const titleMatch = /<title[^>]*>([^<]*)<\/title>/i.exec(content);
+    if (titleMatch?.[1]?.trim()) return titleMatch[1].trim();
+    return 'SVG Image';
+  }
+  if (type === 'jsx' || type === 'tsx') {
+    const match = /(?:export\s+default\s+function\s+(\w+)|(?:export\s+default\s+)?(?:function|const)\s+([A-Z]\w*)\s*[=(])/m.exec(content);
+    const name = match?.[1] || match?.[2];
+    if (name) return name;
+    return type === 'tsx' ? 'TSX Component' : 'JSX Component';
+  }
+  if (type === 'css') {
+    return 'CSS Stylesheet';
+  }
   const headingMatch = /^#{1,3}\s+(.+)$/m.exec(content);
   if (headingMatch?.[1]?.trim()) return headingMatch[1].trim();
   return 'Markdown Document';
 }
 
+/** Maps code fence language tags to ArtifactType. */
+const LANG_TO_TYPE: Record<string, ArtifactType> = {
+  html: 'html', htm: 'html',
+  markdown: 'markdown', md: 'markdown',
+  svg: 'svg',
+  jsx: 'jsx',
+  tsx: 'tsx',
+  css: 'css',
+};
+
 /**
- * Extract previewable code blocks (html / markdown / md / htm) from message text.
+ * Extract previewable code blocks (html / markdown / svg / jsx / tsx / css) from message text.
  * Returns all matched blocks in order; caller can pick the last one for "most recent".
  */
 export function extractPreviewBlocks(text: string): PreviewBlock[] {
   const blocks: PreviewBlock[] = [];
   // Match ```lang[\n content\n```  – optional extra text after lang tag is ignored
-  const regex = /```(html|htm|markdown|md)(?:[^\n]*)?\n([\s\S]*?)```/gi;
+  const regex = /```(html|htm|markdown|md|svg|jsx|tsx|css)(?:[^\n]*)?\n([\s\S]*?)```/gi;
   let match;
   while ((match = regex.exec(text)) !== null) {
     const lang = match[1].toLowerCase();
-    const type: 'html' | 'markdown' = lang === 'html' || lang === 'htm' ? 'html' : 'markdown';
+    const type = LANG_TO_TYPE[lang];
     const content = match[2];
-    if (content.trim()) {
+    if (type && content.trim()) {
       blocks.push({ type, content });
     }
   }

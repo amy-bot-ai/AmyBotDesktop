@@ -18,7 +18,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
-import type { Artifact } from './message-utils';
+import type { Artifact, ArtifactType } from './message-utils';
 
 interface PreviewPanelProps {
   artifacts: Artifact[];
@@ -55,8 +55,14 @@ export function PreviewPanel({
   if (!artifact) return null;
 
   const total = artifacts.length;
-  const isHtml = artifact.type === 'html';
-  const fileExt = isHtml ? 'html' : 'md';
+  const FILE_EXT: Record<ArtifactType, string> = {
+    html: 'html', markdown: 'md', svg: 'svg', jsx: 'jsx', tsx: 'tsx', css: 'css',
+  };
+  const TYPE_LABEL: Record<ArtifactType, string> = {
+    html: 'HTML', markdown: 'MD', svg: 'SVG', jsx: 'JSX', tsx: 'TSX', css: 'CSS',
+  };
+  const fileExt = FILE_EXT[artifact.type] ?? 'txt';
+  const typeLabel = TYPE_LABEL[artifact.type] ?? artifact.type.toUpperCase();
   const fileName = `${artifact.title.replace(/[^a-z0-9_\-. ]/gi, '_').trim() || 'document'}.${fileExt}`;
 
   const handleCopy = () => {
@@ -66,8 +72,13 @@ export function PreviewPanel({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const MIME_TYPES: Record<ArtifactType, string> = {
+    html: 'text/html', markdown: 'text/markdown', svg: 'image/svg+xml',
+    jsx: 'text/plain', tsx: 'text/plain', css: 'text/css',
+  };
+
   const handleDownload = () => {
-    const mimeType = isHtml ? 'text/html' : 'text/markdown';
+    const mimeType = MIME_TYPES[artifact.type] ?? 'text/plain';
     const blob = new Blob([artifact.content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -142,7 +153,7 @@ export function PreviewPanel({
         {/* Title · type */}
         <span className="flex-1 min-w-0 text-[13px] font-medium text-foreground/80 truncate">
           {artifact.title}
-          <span className="text-muted-foreground font-normal"> · {isHtml ? 'HTML' : 'MD'}</span>
+          <span className="text-muted-foreground font-normal"> · {typeLabel}</span>
         </span>
 
         {/* Action buttons */}
@@ -207,20 +218,7 @@ export function PreviewPanel({
       {/* ── Content ────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden">
         {tab === 'preview' ? (
-          isHtml ? (
-            <HtmlPreview
-              key={artifact.id}
-              content={artifact.content}
-            />
-          ) : (
-            <div className="h-full overflow-y-auto px-6 py-5">
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {artifact.content}
-                </ReactMarkdown>
-              </div>
-            </div>
-          )
+          <PreviewContent key={artifact.id} artifact={artifact} />
         ) : (
           <div className="h-full overflow-y-auto p-4 bg-black/[0.02] dark:bg-white/[0.02]">
             <pre className="text-[12px] font-mono text-foreground/80 whitespace-pre-wrap break-words leading-relaxed">
@@ -233,12 +231,28 @@ export function PreviewPanel({
   );
 }
 
+/** Routes to the correct preview renderer based on artifact type. */
+function PreviewContent({ artifact }: { artifact: Artifact }) {
+  const { type, content } = artifact;
+  if (type === 'html') return <IframePreview html={content} title="HTML Preview" />;
+  if (type === 'svg') return <IframePreview html={svgToHtml(content)} title="SVG Preview" />;
+  if (type === 'jsx' || type === 'tsx') return <IframePreview html={jsxToHtml(content)} title="React Component Preview" />;
+  if (type === 'css') return <IframePreview html={cssToHtml(content)} title="CSS Preview" />;
+  // markdown
+  return (
+    <div className="h-full overflow-y-auto px-6 py-5">
+      <div className="prose prose-sm dark:prose-invert max-w-none">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      </div>
+    </div>
+  );
+}
+
 /**
- * Renders HTML content by writing directly into an iframe's document.
- * This bypasses Electron's CSP entirely — no URL is loaded, so no URL
- * scheme (blob:, data:, srcdoc) gets blocked by the renderer security policy.
+ * Generic iframe renderer — injects arbitrary HTML via doc.write() to bypass
+ * Electron's CSP (no URL scheme used, so no scheme restriction applies).
  */
-function HtmlPreview({ content }: { content: string }) {
+function IframePreview({ html, title }: { html: string; title?: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -247,16 +261,91 @@ function HtmlPreview({ content }: { content: string }) {
     const doc = frame.contentDocument ?? frame.contentWindow?.document;
     if (!doc) return;
     doc.open();
-    doc.write(content);
+    doc.write(html);
     doc.close();
-  }, [content]);
+  }, [html]);
 
-  return (
-    <iframe
-      ref={iframeRef}
-      className="w-full h-full border-0"
-      title="HTML Preview"
-    />
-  );
+  return <iframe ref={iframeRef} className="w-full h-full border-0" title={title} />;
+}
+
+/** Wraps raw SVG markup in a minimal HTML shell for iframe rendering. */
+function svgToHtml(content: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+  html, body { margin: 0; height: 100%; display: flex; align-items: center; justify-content: center; background: transparent; }
+  svg { max-width: 100%; max-height: 100%; }
+</style></head>
+<body>${content.trim()}</body>
+</html>`;
+}
+
+/**
+ * Wraps JSX/TSX content in an iframe-ready HTML page that loads React and
+ * Babel standalone from CDN, then transforms and renders the component.
+ * Auto-renders an `App` export/declaration if no explicit render call is found.
+ */
+function jsxToHtml(content: string): string {
+  const hasExplicitRender = /ReactDOM\s*\.\s*(render|createRoot)/.test(content);
+  const autoRender = hasExplicitRender ? '' : `
+// Auto-render: look for App component
+try {
+  const __root = document.getElementById('__root__');
+  if (typeof App !== 'undefined' && __root && !__root.firstChild) {
+    ReactDOM.createRoot(__root).render(React.createElement(App));
+  }
+} catch(__e) { console.error('Auto-render failed:', __e); }`;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="__root__"></div>
+  <script type="text/babel" data-presets="react,typescript">
+${content}
+${autoRender}
+  </script>
+</body>
+</html>`;
+}
+
+/** Wraps a CSS string in an HTML page with common sample elements to visualise the styles. */
+function cssToHtml(content: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+  </style>
+  <style>${content}</style>
+</head>
+<body>
+  <h1>Heading 1</h1>
+  <h2>Heading 2</h2>
+  <h3>Heading 3</h3>
+  <p>Paragraph with <strong>bold</strong>, <em>italic</em>, and <a href="#">a link</a>.</p>
+  <button>Button</button>
+  <button class="btn">Button .btn</button>
+  <ul><li>List item 1</li><li>List item 2</li><li>List item 3</li></ul>
+  <div class="container"><p>div.container</p></div>
+  <div class="card"><p>div.card</p></div>
+  <input type="text" placeholder="Input field" />
+  <hr />
+  <blockquote>Blockquote text</blockquote>
+  <code>inline code</code>
+  <pre><code>pre code block</code></pre>
+</body>
+</html>`;
 }
 
