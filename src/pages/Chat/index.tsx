@@ -68,10 +68,13 @@ export function Chat() {
       // regardless of whether the id came from the server or was synthesized locally.
       if (msg.role === 'assistant') {
         const text = extractText(msg as Parameters<typeof extractText>[0]);
-        // Normalize timestamp to whole seconds to compare across ms vs seconds formats
+        // Normalize timestamp to whole seconds, then bucket by 2s to tolerate
+        // sub-second differences between the server history version and the local
+        // streaming-final version of the same message (race condition dedup).
         const rawTs = Number(msg.timestamp ?? 0);
         const tsSeconds = rawTs > 1e12 ? Math.round(rawTs / 1000) : Math.round(rawTs);
-        const fp = `${tsSeconds}|${text.slice(0, 500)}`;
+        const tsBucket = Math.floor(tsSeconds / 2);
+        const fp = `${tsBucket}|${text.slice(0, 500)}`;
         if (assistantFingerprints.has(fp)) return false;
         assistantFingerprints.add(fp);
       }
@@ -244,12 +247,19 @@ export function Chat() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setArtifacts(found);
 
-    // Auto-open panel whenever a new artifact appears
+    // Auto-open panel when a new artifact appears, but only change the active
+    // index when the panel is closed. If the panel is already open the user is
+    // actively viewing an artifact — switching away would blank the preview.
     if (found.length > prevArtifactCount.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setActiveArtifactIndex(found.length - 1);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setPanelOpen(true);
+      if (!panelOpen) {
+        // Panel was closed — open it and jump to the latest artifact
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setActiveArtifactIndex(found.length - 1);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPanelOpen(true);
+      }
+      // If panel is already open: add the new artifact to the list but keep
+      // the user's current view (they can navigate with prev/next arrows).
     }
     prevArtifactCount.current = found.length;
   }, [messages, streamText]);
