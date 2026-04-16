@@ -1934,31 +1934,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
             const clearPendingImages = { pendingToolImages: [] as AttachedFileMeta[] };
 
             // Check if message already exists (prevent duplicates).
-            // ID-based: catches replayed events for the same run.
-            const alreadyExists = s.messages.some(m => m.id === msgId);
-            // Content-based: catches a race where the history poll fires first and
-            // populates the server's authoritative message (with a server-assigned ID)
-            // *before* the streaming `final` event arrives. The event would then bypass
-            // the ID check (different ID) and add the same content a second time.
-            // Only applies to non-tool-only messages with actual text output.
-            const contentAlreadyExists = !toolOnly && !alreadyExists && (() => {
-              const text = getMessageText(finalMsg.content).trim();
-              if (!text) return false;
-              // Only scan messages after the most recent user turn to allow the same
-              // text to legitimately appear in separate conversation turns.
-              // If there is no user message (e.g. cron/system-initiated session) skip
-              // the check entirely — we cannot determine the scope of "current turn"
-              // and a false-positive suppression would silently drop a real response.
-              let lastUserIdx = -1;
-              for (let i = s.messages.length - 1; i >= 0; i--) {
-                if (s.messages[i].role === 'user') { lastUserIdx = i; break; }
+            // Primary: match by id. Fallback: when the final event has no server-assigned
+            // id (so we synthesized "run-${runId}"), a history poll may have already loaded
+            // this message with its real server id — detect by timestamp proximity.
+            const rawFinalTs = Number(finalMsg.timestamp ?? 0);
+            const finalTsMs = rawFinalTs > 0 ? (rawFinalTs < 1e12 ? rawFinalTs * 1000 : rawFinalTs) : 0;
+            const alreadyExists = s.messages.some(m => {
+              if (m.id === msgId) return true;
+              if (!finalMsg.id && m.role !== 'user' && finalTsMs > 0 && m.timestamp) {
+                const mTs = Number(m.timestamp);
+                const mTsMs = mTs < 1e12 ? mTs * 1000 : mTs;
+                if (Math.abs(mTsMs - finalTsMs) < 5000) return true;
               }
-              if (lastUserIdx === -1) return false;
-              return s.messages.slice(lastUserIdx + 1).some(
-                m => m.role === 'assistant' && getMessageText(m.content).trim() === text,
-              );
-            })();
-            if (alreadyExists || contentAlreadyExists) {
+              return false;
+            });
+            if (alreadyExists) {
               return toolOnly ? {
                 streamingText: '',
                 streamingMessage: null,

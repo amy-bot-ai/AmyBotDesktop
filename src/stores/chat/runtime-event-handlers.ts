@@ -116,15 +116,29 @@ export function handleRuntimeEventState(
                 if (currentStream) {
                   const streamRole = currentStream.role;
                   if (streamRole === 'assistant' || streamRole === undefined) {
-                    // Use message's own id if available, otherwise derive a stable one from runId
-                    const snapId = currentStream.id
-                      || `${runId || 'run'}-turn-${s.messages.length}`;
-                    if (!s.messages.some(m => m.id === snapId)) {
-                      snapshotMsgs.push({
-                        ...(currentStream as RawMessage),
-                        role: 'assistant',
-                        id: snapId,
-                      });
+                    // Only snapshot purely intermediate tool-use/thinking steps.
+                    // If streamingMessage already has text blocks it means the AI's
+                    // next-turn text response started arriving before this tool_result
+                    // event fired (out-of-order delivery). Snapshotting a text-bearing
+                    // message here creates a partial duplicate; the upcoming 'final'
+                    // event will add the complete message instead.
+                    const streamContent = currentStream.content;
+                    const hasTextBlocks = typeof streamContent === 'string'
+                      ? streamContent.trim().length > 0
+                      : Array.isArray(streamContent) && (streamContent as Array<{ type?: string; text?: string }>)
+                          .some(b => b.type === 'text' && typeof b.text === 'string' && b.text.trim().length > 0);
+
+                    if (!hasTextBlocks) {
+                      // Use message's own id if available, otherwise derive a stable one from runId
+                      const snapId = currentStream.id
+                        || `${runId || 'run'}-turn-${s.messages.length}`;
+                      if (!s.messages.some(m => m.id === snapId)) {
+                        snapshotMsgs.push({
+                          ...(currentStream as RawMessage),
+                          role: 'assistant',
+                          id: snapId,
+                        });
+                      }
                     }
                   }
                 }
@@ -163,29 +177,23 @@ export function handleRuntimeEventState(
               // Check if message already exists (prevent duplicates).
               // ID-based: catches replayed events for the same run.
               const alreadyExists = s.messages.some(m => m.id === msgId);
-              // Content-based: catches a race where the history poll fires first and
-              // populates the server's authoritative message (with a server-assigned ID)
-              // *before* the streaming `final` event arrives. The event would then bypass
-              // the ID check (different ID) and add the same content a second time.
-              // Only applies to non-tool-only messages with actual text output.
-              const contentAlreadyExists = !toolOnly && !alreadyExists && (() => {
-                const text = getMessageText(finalMsg.content).trim();
-                if (!text) return false;
-                // Only scan messages after the most recent user turn to allow the same
-                // text to legitimately appear in separate conversation turns.
-                // If there is no user message (e.g. cron/system-initiated session) skip
-                // the check entirely — we cannot determine the scope of "current turn"
-                // and a false-positive suppression would silently drop a real response.
-                let lastUserIdx = -1;
-                for (let i = s.messages.length - 1; i >= 0; i--) {
-                  if (s.messages[i].role === 'user') { lastUserIdx = i; break; }
-                }
-                if (lastUserIdx === -1) return false;
-                return s.messages.slice(lastUserIdx + 1).some(
-                  m => m.role === 'assistant' && getMessageText(m.content).trim() === text,
-                );
-              })();
-              if (alreadyExists || contentAlreadyExists) {
+              // Content-based guard: catches two races:
+              // 1. History poll loads server version (different id) before this final event.
+              // 2. Snapshot mechanism stored a partial streaming copy; this is the complete version.
+              // Use min-length comparison so a partial (e.g. 300 chars) matches a complete
+              // (1000 chars) when both share the same prefix — strict slice equality fails
+              // when lengths differ.
+              const finalText = hasOutput ? getMessageText(finalMsg.content) : '';
+              const alreadyExistsByContent = !alreadyExists && hasOutput
+                && finalText.length > 50
+                && s.messages.some(m => {
+                  if (m.role !== 'assistant') return false;
+                  const mText = getMessageText(m.content);
+                  const cmpLen = Math.min(mText.length, finalText.length, 400);
+                  if (cmpLen < 50) return false;
+                  return mText.slice(0, cmpLen) === finalText.slice(0, cmpLen);
+                });
+              if (alreadyExists || alreadyExistsByContent) {
                 return toolOnly ? {
                   streamingText: '',
                   streamingMessage: null,
