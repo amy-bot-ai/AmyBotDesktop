@@ -90,7 +90,7 @@ function maybeLoadSessions(
 }
 
 function maybeLoadHistory(
-  state: { loadHistory: (quiet?: boolean) => Promise<void> },
+  state: { loadHistory: (quiet?: boolean, force?: boolean) => Promise<void> },
   force = false,
 ): void {
   const now = Date.now();

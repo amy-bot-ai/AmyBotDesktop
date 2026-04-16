@@ -160,9 +160,32 @@ export function handleRuntimeEventState(
                 : { ...finalMsg, role: (finalMsg.role || 'assistant') as RawMessage['role'], id: msgId };
               const clearPendingImages = { pendingToolImages: [] as AttachedFileMeta[] };
 
-              // Check if message already exists (prevent duplicates)
+              // Check if message already exists (prevent duplicates).
+              // ID-based: catches replayed events for the same run.
               const alreadyExists = s.messages.some(m => m.id === msgId);
-              if (alreadyExists) {
+              // Content-based: catches a race where the history poll fires first and
+              // populates the server's authoritative message (with a server-assigned ID)
+              // *before* the streaming `final` event arrives. The event would then bypass
+              // the ID check (different ID) and add the same content a second time.
+              // Only applies to non-tool-only messages with actual text output.
+              const contentAlreadyExists = !toolOnly && !alreadyExists && (() => {
+                const text = getMessageText(finalMsg.content).trim();
+                if (!text) return false;
+                // Only scan messages after the most recent user turn to allow the same
+                // text to legitimately appear in separate conversation turns.
+                // If there is no user message (e.g. cron/system-initiated session) skip
+                // the check entirely — we cannot determine the scope of "current turn"
+                // and a false-positive suppression would silently drop a real response.
+                let lastUserIdx = -1;
+                for (let i = s.messages.length - 1; i >= 0; i--) {
+                  if (s.messages[i].role === 'user') { lastUserIdx = i; break; }
+                }
+                if (lastUserIdx === -1) return false;
+                return s.messages.slice(lastUserIdx + 1).some(
+                  m => m.role === 'assistant' && getMessageText(m.content).trim() === text,
+                );
+              })();
+              if (alreadyExists || contentAlreadyExists) {
                 return toolOnly ? {
                   streamingText: '',
                   streamingMessage: null,
@@ -199,9 +222,10 @@ export function handleRuntimeEventState(
             });
             // After the final response, quietly reload history to surface all intermediate
             // tool-use turns (thinking + tool blocks) from the Gateway's authoritative record.
+            // force=true bypasses the 800 ms throttle so this cleanup always runs.
             if (hasOutput && !toolOnly) {
               clearHistoryPoll();
-              void get().loadHistory(true);
+              void get().loadHistory(true, true);
             }
           } else {
             // No message in final event - reload history to get complete data

@@ -17,6 +17,7 @@ import { useAgentsStore } from '@/stores/agents';
 import { useChatStore } from '@/stores/chat';
 import type { AgentSummary } from '@/types/agent';
 import { useTranslation } from 'react-i18next';
+import { getSlashCommandCompletions, parseSlashCommand, type SlashCommandDef } from './slash-commands';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -89,11 +90,19 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [targetAgentId, setTargetAgentId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [slashMenuOpen,  setSlashMenuOpen]  = useState(false);
+  const [slashMenuItems, setSlashMenuItems] = useState<SlashCommandDef[]>([]);
+  const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const inputCardRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
   const agents = useAgentsStore((s) => s.agents);
   const currentAgentId = useChatStore((s) => s.currentAgentId);
+  const clearMessages   = useChatStore((s) => s.clearMessages);
+  const compactSession  = useChatStore((s) => s.compactSession);
+  const newSession      = useChatStore((s) => s.newSession);
+  const abortRun        = useChatStore((s) => s.abortRun);
   const currentAgentName = useMemo(
     () => (agents ?? []).find((agent) => agent.id === currentAgentId)?.name ?? currentAgentId,
     [agents, currentAgentId],
@@ -148,6 +157,17 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
       document.removeEventListener('mousedown', handlePointerDown);
     };
   }, [pickerOpen]);
+
+  useEffect(() => {
+    if (!slashMenuOpen) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (!inputCardRef.current?.contains(e.target as Node)) {
+        setSlashMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [slashMenuOpen]);
 
   // ── File staging via native dialog ─────────────────────────────
 
@@ -286,7 +306,30 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
   const canSend = (input.trim() || attachments.length > 0) && allReady && !disabled && !sending;
   const canStop = sending && !disabled && !!onStop;
 
+  const selectSlashCommand = useCallback((cmd: SlashCommandDef) => {
+    setSlashMenuOpen(false);
+    setSlashMenuIndex(0);
+    setInput('');
+    setTargetAgentId(null); // slash commands always target main agent
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+
+    if (cmd.executeLocal) {
+      if (cmd.key === 'clear')   { clearMessages();          return; }
+      if (cmd.key === 'compact') { void compactSession();    return; }
+      if (cmd.key === 'stop')    { void abortRun();          return; }
+      if (cmd.key === 'new')     { newSession();             return; }
+    }
+    // Gateway pass-through: always send with targetAgentId=null
+    onSend(`/${cmd.name}`, undefined, null);
+  }, [clearMessages, compactSession, abortRun, newSession, onSend]);
+
   const handleSend = useCallback(() => {
+    // Route slash commands before normal send logic
+    const parsed = parseSlashCommand(input);
+    if (parsed) {
+      selectSlashCommand(parsed);
+      return;
+    }
     if (!canSend) return;
     const readyAttachments = attachments.filter(a => a.status === 'ready');
     // Capture values before clearing — clear input immediately for snappy UX,
@@ -308,7 +351,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
     onSend(textToSend, attachmentsToSend, targetAgentId);
     setTargetAgentId(null);
     setPickerOpen(false);
-  }, [input, attachments, canSend, onSend, targetAgentId]);
+  }, [input, attachments, canSend, onSend, targetAgentId, selectSlashCommand]);
 
   const handleStop = useCallback(() => {
     if (!canStop) return;
@@ -317,6 +360,40 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (slashMenuOpen && slashMenuItems.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSlashMenuIndex((i) => Math.min((i + 1) % slashMenuItems.length, slashMenuItems.length - 1));
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSlashMenuIndex((i) => Math.min((i - 1 + slashMenuItems.length) % slashMenuItems.length, slashMenuItems.length - 1));
+          return;
+        }
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const cmd = slashMenuItems[Math.min(slashMenuIndex, slashMenuItems.length - 1)];
+          if (cmd) {
+            setInput(`/${cmd.name}`);
+            setSlashMenuOpen(false); // close after tab-fill; user presses Enter to execute
+          }
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setSlashMenuOpen(false);
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          const nativeEvent = e.nativeEvent as KeyboardEvent;
+          if (isComposingRef.current || nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
+          e.preventDefault();
+          const cmd = slashMenuItems[Math.min(slashMenuIndex, slashMenuItems.length - 1)];
+          if (cmd) selectSlashCommand(cmd);
+          return;
+        }
+      }
       if (e.key === 'Backspace' && !input && targetAgentId) {
         setTargetAgentId(null);
         return;
@@ -330,7 +407,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
         handleSend();
       }
     },
-    [handleSend, input, targetAgentId],
+    [handleSend, input, targetAgentId, slashMenuOpen, slashMenuItems, slashMenuIndex, selectSlashCommand],
   );
 
   // Handle paste (Ctrl/Cmd+V with files)
@@ -406,7 +483,42 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
         )}
 
         {/* Input Row */}
-        <div className={`relative bg-white dark:bg-card rounded-[28px] shadow-sm border p-1.5 transition-all ${dragOver ? 'border-primary ring-1 ring-primary' : 'border-black/10 dark:border-white/10'}`}>
+        <div ref={inputCardRef} className={`relative bg-white dark:bg-card rounded-[28px] shadow-sm border p-1.5 transition-all ${dragOver ? 'border-primary ring-1 ring-primary' : 'border-black/10 dark:border-white/10'}`}>
+          {/* Slash Command Menu */}
+          {slashMenuOpen && slashMenuItems.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-2 z-30 overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-card shadow-xl">
+              <div className="px-3 py-2 text-[11px] font-medium text-muted-foreground/80 border-b border-black/5 dark:border-white/5">
+                Slash Commands
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {slashMenuItems.map((cmd, idx) => (
+                  <button
+                    key={cmd.key}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault(); // prevent textarea blur before click fires
+                      selectSlashCommand(cmd);
+                    }}
+                    className={cn(
+                      'flex w-full items-center gap-3 px-3 py-2 text-left transition-colors',
+                      idx === slashMenuIndex
+                        ? 'bg-primary/10 text-foreground'
+                        : 'hover:bg-black/5 dark:hover:bg-white/5',
+                    )}
+                  >
+                    <span className="text-[14px] font-medium font-mono text-foreground">/{cmd.name}</span>
+                    <span className="text-[12px] text-muted-foreground">{cmd.description}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="border-t border-black/5 dark:border-white/5 px-3 py-1.5 text-[10px] text-muted-foreground/50 flex gap-2">
+                <span><kbd className="font-sans">↑↓</kbd> navigate</span>
+                <span><kbd className="font-sans">Tab</kbd> fill</span>
+                <span><kbd className="font-sans">Enter</kbd> select</span>
+                <span><kbd className="font-sans">Esc</kbd> close</span>
+              </div>
+            </div>
+          )}
           {selectedTarget && (
             <div className="px-2.5 pt-2 pb-1">
               <button
@@ -478,7 +590,23 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
               <Textarea
                 ref={textareaRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setInput(value);
+                  // Slash command detection: matches anything starting with "/"
+                  // Uses /^\/(.*)$/ (not /^\/(\S*)$/) to allow filtering with trailing chars
+                  const match = value.match(/^\/(.*)$/);
+                  if (match) {
+                    // Use only the first word for filtering; rest are future args (v2)
+                    const filterWord = match[1].split(/\s/)[0];
+                    const items = getSlashCommandCompletions(filterWord);
+                    setSlashMenuItems(items);
+                    setSlashMenuOpen(items.length > 0);
+                    setSlashMenuIndex(0); // always reset on list change
+                  } else {
+                    setSlashMenuOpen(false);
+                  }
+                }}
                 onKeyDown={handleKeyDown}
                 onCompositionStart={() => {
                   isComposingRef.current = true;

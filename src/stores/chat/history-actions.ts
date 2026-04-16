@@ -12,7 +12,7 @@ import {
   toMs,
 } from './helpers';
 import { buildCronSessionHistoryPath, isCronSessionKey } from './cron-session-utils';
-import type { RawMessage } from './types';
+import type { ContentBlock, RawMessage } from './types';
 import type { ChatGet, ChatSet, SessionHistoryActions } from './store-api';
 
 async function loadCronFallbackMessages(sessionKey: string, limit = 200): Promise<RawMessage[]> {
@@ -33,7 +33,7 @@ export function createHistoryActions(
   get: ChatGet,
 ): Pick<SessionHistoryActions, 'loadHistory'> {
   return {
-    loadHistory: async (quiet = false) => {
+    loadHistory: async (quiet = false, _force = false) => {
       const { currentSessionKey } = get();
       if (!quiet) set({ loading: true, error: null });
 
@@ -79,8 +79,36 @@ export function createHistoryActions(
         // Before filtering: attach images/files from tool_result messages to the next assistant message
         const messagesWithToolImages = enrichWithToolResultFiles(rawMessages);
         const filteredMessages = messagesWithToolImages.filter((msg) => !isToolResultRole(msg.role) && !isInternalMessage(msg));
+
+        // Deduplicate assistant messages within the same conversation turn.
+        // The server may return an intermediate assistant turn (text + tool_use)
+        // followed by a final assistant turn with identical text. Keep only the
+        // later (authoritative) message to prevent the same text rendering twice.
+        // Only suppress messages that contain a tool_use block — this guards against
+        // false positives where an agent legitimately repeats the same text twice
+        // in separate assistant turns without any tool call in between.
+        const deduplicatedMessages: RawMessage[] = [];
+        for (let i = 0; i < filteredMessages.length; i++) {
+          const msg = filteredMessages[i];
+          if (msg.role !== 'assistant') { deduplicatedMessages.push(msg); continue; }
+          const text = getMessageText(msg.content).trim();
+          if (!text) { deduplicatedMessages.push(msg); continue; }
+          // Only consider suppression for intermediate tool-use turns
+          const hasToolUse = Array.isArray(msg.content) &&
+            (msg.content as ContentBlock[]).some((b) => b.type === 'tool_use' || b.type === 'toolCall');
+          if (!hasToolUse) { deduplicatedMessages.push(msg); continue; }
+          let turnEnd = filteredMessages.length;
+          for (let j = i + 1; j < filteredMessages.length; j++) {
+            if (filteredMessages[j].role === 'user') { turnEnd = j; break; }
+          }
+          const isDuplicate = filteredMessages.slice(i + 1, turnEnd).some(
+            (m) => m.role === 'assistant' && getMessageText(m.content).trim() === text,
+          );
+          if (!isDuplicate) deduplicatedMessages.push(msg);
+        }
+
         // Restore file attachments for user/assistant messages (from cache + text patterns)
-        const enrichedMessages = enrichWithCachedImages(filteredMessages);
+        const enrichedMessages = enrichWithCachedImages(deduplicatedMessages);
 
         // Preserve the optimistic user message during an active send.
         // The Gateway may not include the user's message in chat.history

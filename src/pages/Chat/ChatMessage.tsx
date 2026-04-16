@@ -164,6 +164,17 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         )}
 
+        {/* Typing indicator: agent is active but no text output yet */}
+        {isStreaming && !isUser && !hasText && !visibleThinking && (
+          <div className="rounded-2xl px-4 py-3 bg-black/5 dark:bg-white/5">
+            <div className="flex gap-1 items-center">
+              <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
+        )}
+
         {/* Main text bubble */}
         {hasText && (
           <MessageBubble

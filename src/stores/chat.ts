@@ -4,6 +4,7 @@
  * Communicates with OpenClaw Gateway via renderer WebSocket RPC.
  */
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import { hostApiFetch } from '@/lib/host-api';
 import { useGatewayStore } from './gateway';
 import { useAgentsStore } from './agents';
@@ -1303,16 +1304,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // ── Load chat history ──
 
-  loadHistory: async (quiet = false) => {
+  loadHistory: async (quiet = false, force = false) => {
     const { currentSessionKey } = get();
     const existingLoad = _historyLoadInFlight.get(currentSessionKey);
     if (existingLoad) {
       await existingLoad;
-      return;
+      // When force=true (post-final cleanup), the existing in-flight load may have
+      // started before the final event and fetched stale data. Re-run to get the
+      // authoritative server state that includes the completed final message.
+      if (!force) return;
     }
 
     const lastLoadAt = _lastHistoryLoadAtBySession.get(currentSessionKey) || 0;
-    if (quiet && Date.now() - lastLoadAt < HISTORY_LOAD_MIN_INTERVAL_MS) {
+    if (quiet && !force && Date.now() - lastLoadAt < HISTORY_LOAD_MIN_INTERVAL_MS) {
       return;
     }
 
@@ -1373,8 +1377,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Before filtering: attach images/files from tool_result messages to the next assistant message
       const messagesWithToolImages = enrichWithToolResultFiles(rawMessages);
       const filteredMessages = messagesWithToolImages.filter((msg) => !isToolResultRole(msg.role) && !isInternalMessage(msg));
+
+      // Deduplicate assistant messages within the same conversation turn.
+      // The server may return an intermediate assistant turn (text + tool_use)
+      // followed by a final assistant turn with identical text. Keep only the
+      // later (authoritative) message to prevent the same text rendering twice.
+      // Only suppress messages that contain a tool_use block — this guards against
+      // false positives where an agent legitimately repeats the same text twice
+      // in separate assistant turns without any tool call in between.
+      const deduplicatedMessages: RawMessage[] = [];
+      for (let i = 0; i < filteredMessages.length; i++) {
+        const msg = filteredMessages[i];
+        if (msg.role !== 'assistant') { deduplicatedMessages.push(msg); continue; }
+        const text = getMessageText(msg.content).trim();
+        if (!text) { deduplicatedMessages.push(msg); continue; }
+        // Only consider suppression for intermediate tool-use turns
+        const hasToolUse = Array.isArray(msg.content) &&
+          (msg.content as ContentBlock[]).some((b) => b.type === 'tool_use' || b.type === 'toolCall');
+        if (!hasToolUse) { deduplicatedMessages.push(msg); continue; }
+        let turnEnd = filteredMessages.length;
+        for (let j = i + 1; j < filteredMessages.length; j++) {
+          if (filteredMessages[j].role === 'user') { turnEnd = j; break; }
+        }
+        const isDuplicate = filteredMessages.slice(i + 1, turnEnd).some(
+          (m) => m.role === 'assistant' && getMessageText(m.content).trim() === text,
+        );
+        if (!isDuplicate) deduplicatedMessages.push(msg);
+      }
+
       // Restore file attachments for user/assistant messages (from cache + text patterns)
-      const enrichedMessages = enrichWithCachedImages(filteredMessages);
+      const enrichedMessages = enrichWithCachedImages(deduplicatedMessages);
 
       // Preserve the optimistic user message during an active send.
       // The Gateway may not include the user's message in chat.history
@@ -1901,9 +1933,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
               : { ...finalMsg, role: (finalMsg.role || 'assistant') as RawMessage['role'], id: msgId };
             const clearPendingImages = { pendingToolImages: [] as AttachedFileMeta[] };
 
-            // Check if message already exists (prevent duplicates)
+            // Check if message already exists (prevent duplicates).
+            // ID-based: catches replayed events for the same run.
             const alreadyExists = s.messages.some(m => m.id === msgId);
-            if (alreadyExists) {
+            // Content-based: catches a race where the history poll fires first and
+            // populates the server's authoritative message (with a server-assigned ID)
+            // *before* the streaming `final` event arrives. The event would then bypass
+            // the ID check (different ID) and add the same content a second time.
+            // Only applies to non-tool-only messages with actual text output.
+            const contentAlreadyExists = !toolOnly && !alreadyExists && (() => {
+              const text = getMessageText(finalMsg.content).trim();
+              if (!text) return false;
+              // Only scan messages after the most recent user turn to allow the same
+              // text to legitimately appear in separate conversation turns.
+              // If there is no user message (e.g. cron/system-initiated session) skip
+              // the check entirely — we cannot determine the scope of "current turn"
+              // and a false-positive suppression would silently drop a real response.
+              let lastUserIdx = -1;
+              for (let i = s.messages.length - 1; i >= 0; i--) {
+                if (s.messages[i].role === 'user') { lastUserIdx = i; break; }
+              }
+              if (lastUserIdx === -1) return false;
+              return s.messages.slice(lastUserIdx + 1).some(
+                m => m.role === 'assistant' && getMessageText(m.content).trim() === text,
+              );
+            })();
+            if (alreadyExists || contentAlreadyExists) {
               return toolOnly ? {
                 streamingText: '',
                 streamingMessage: null,
@@ -1940,9 +1995,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
           });
           // After the final response, quietly reload history to surface all intermediate
           // tool-use turns (thinking + tool blocks) from the Gateway's authoritative record.
+          // force=true bypasses the 800 ms throttle so this cleanup always runs.
           if (hasOutput && !toolOnly) {
             clearHistoryPoll();
-            void get().loadHistory(true);
+            void get().loadHistory(true, true);
           }
         } else {
           // No message in final event - reload history to get complete data
@@ -2054,4 +2110,49 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  clearMessages: () =>
+    set({
+      messages: [],
+      streamingMessage: null,
+      streamingText: '',
+      streamingTools: [],
+      error: null,
+      pendingFinal: false,
+      activeRunId: null,
+      pendingToolImages: [],   // prevent stale images attaching to next message
+      lastUserMessageAt: null,
+    }),
+
+  compactSession: async () => {
+    const { currentSessionKey, loadHistory } = get();
+    const toastId = toast.loading('Compacting context…');
+    try {
+      const result = await useGatewayStore.getState().rpc<{
+        compacted?: boolean;
+        reason?: string;
+        result?: { tokensBefore?: number; tokensAfter?: number };
+      }>('sessions.compact', { key: currentSessionKey });
+
+      if (result?.compacted) {
+        const before = result.result?.tokensBefore;
+        const after  = result.result?.tokensAfter;
+        const tokenSummary =
+          typeof before === 'number' && typeof after === 'number'
+            ? ` (${before.toLocaleString()} → ${after.toLocaleString()} tokens)`
+            : '';
+        toast.success(`Context compacted${tokenSummary}`, { id: toastId });
+      } else {
+        const reason = typeof result?.reason === 'string' && result.reason.trim()
+          ? result.reason
+          : 'Context is already compact';
+        toast.info(reason, { id: toastId });
+      }
+    } catch (err) {
+      toast.error(`Compaction failed: ${String(err)}`, { id: toastId });
+      return;
+    }
+    // Reload history to reflect the compacted context
+    await loadHistory(true);
+  },
 }));

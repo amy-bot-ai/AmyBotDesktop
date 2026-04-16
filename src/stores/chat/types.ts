@@ -97,7 +97,7 @@ export interface ChatState {
   newSession: () => void;
   deleteSession: (key: string) => Promise<void>;
   cleanupEmptySession: () => void;
-  loadHistory: (quiet?: boolean) => Promise<void>;
+  loadHistory: (quiet?: boolean, force?: boolean) => Promise<void>;
   sendMessage: (
     text: string,
     attachments?: Array<{
@@ -115,6 +115,8 @@ export interface ChatState {
   toggleGraph: () => void;
   refresh: () => Promise<void>;
   clearError: () => void;
+  clearMessages: () => void;
+  compactSession: () => Promise<void>;
 }
 
 export const DEFAULT_CANONICAL_PREFIX = 'agent:main';

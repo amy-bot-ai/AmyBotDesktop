@@ -131,7 +131,18 @@ describe('chat runtime event handlers', () => {
 
   it('marks tool-result attachments before appending them to the final assistant reply', async () => {
     extractMediaRefs.mockReturnValue([{ filePath: '/tmp/CHECKLIST.md', mimeType: 'text/markdown' }]);
-    getMessageText.mockReturnValue('[media attached: /tmp/CHECKLIST.md (text/markdown) | /tmp/CHECKLIST.md]');
+    // Return the media-ref string only for tool-result content; return the real
+    // text for text-block content so the content-based duplicate check doesn't
+    // falsely match the snapshot (tool_use block) against the final assistant msg.
+    getMessageText.mockImplementation((content: unknown) => {
+      if (Array.isArray(content)) {
+        const textBlocks = (content as Array<{ type?: string; text?: string }>)
+          .filter(b => b.type === 'text' && b.text);
+        if (textBlocks.length > 0) return textBlocks.map(b => b.text!).join('\n');
+      }
+      if (typeof content === 'string') return content;
+      return '[media attached: /tmp/CHECKLIST.md (text/markdown) | /tmp/CHECKLIST.md]';
+    });
     hasNonToolAssistantContent.mockReturnValue(true);
 
     const { handleRuntimeEventState } = await import('@/stores/chat/runtime-event-handlers');
@@ -226,6 +237,114 @@ describe('chat runtime event handlers', () => {
 
     handleRuntimeEventState(h.set as never, h.get as never, { message: incoming }, 'delta', 'run-x');
     expect(h.read().streamingMessage).toEqual(incoming);
+  });
+
+  it('does not add duplicate assistant message when content already committed by history poll', async () => {
+    // Race condition: history poll runs first, loading server's authoritative message
+    // (with server-assigned ID), then the streaming `final` event arrives late.
+    // The event's generated ID doesn't match the server ID, so ID-based dedup misses it.
+    // Content-based dedup must prevent the second add.
+    isToolOnlyMessage.mockReturnValue(false);
+    hasNonToolAssistantContent.mockReturnValue(true);
+    getMessageText.mockImplementation((content: unknown) => {
+      if (typeof content === 'string') return content;
+      if (Array.isArray(content)) {
+        return (content as Array<{ type?: string; text?: string }>)
+          .filter(b => b.type === 'text' && b.text)
+          .map(b => b.text!)
+          .join('\n');
+      }
+      return '';
+    });
+
+    const { handleRuntimeEventState } = await import('@/stores/chat/runtime-event-handlers');
+
+    const serverMsg = {
+      role: 'assistant',
+      id: 'server-assigned-id',  // server ID, different from client-generated `run-${runId}`
+      content: 'Agent reply text',
+    };
+
+    // Simulate: history poll already committed the server message
+    const h = makeHarness({
+      sending: false,
+      messages: [
+        { role: 'user', id: 'u1', content: 'User question' },
+        serverMsg,
+      ],
+    });
+
+    // Now the late `final` event arrives (same content, client-generated id)
+    handleRuntimeEventState(h.set as never, h.get as never, {
+      message: { role: 'assistant', content: 'Agent reply text' },
+    }, 'final', 'run-xyz');
+
+    const msgs = h.read().messages;
+    const assistantMsgs = msgs.filter(m => m.role === 'assistant');
+    expect(assistantMsgs).toHaveLength(1);
+    expect(assistantMsgs[0]).toMatchObject({ id: 'server-assigned-id' });
+  });
+
+  it('does not suppress first assistant message in a session with no user messages (cron/system session)', async () => {
+    // F5 regression guard: when there is no user message, lastUserIdx = -1 and we
+    // must skip content dedup to avoid silently dropping the first real response.
+    isToolOnlyMessage.mockReturnValue(false);
+    hasNonToolAssistantContent.mockReturnValue(true);
+    getMessageText.mockImplementation((content: unknown) => {
+      if (typeof content === 'string') return content;
+      return '';
+    });
+
+    const { handleRuntimeEventState } = await import('@/stores/chat/runtime-event-handlers');
+
+    // Session starts with a prior assistant message (e.g. agent greeting) — no user message
+    const h = makeHarness({
+      sending: true,
+      messages: [
+        { role: 'assistant', id: 'a0', content: 'automated response' },
+      ],
+    });
+
+    // New run produces the same text
+    handleRuntimeEventState(h.set as never, h.get as never, {
+      message: { role: 'assistant', content: 'automated response' },
+    }, 'final', 'run-cron');
+
+    const msgs = h.read().messages;
+    const assistantMsgs = msgs.filter(m => m.role === 'assistant');
+    // Should NOT be suppressed — no user turn to scope the dedup
+    expect(assistantMsgs).toHaveLength(2);
+  });
+
+  it('allows same response text in a new conversation turn (not a duplicate)', async () => {
+    // Legitimate case: agent gives same text in two separate turns.
+    // There is a user message between them, so the second should NOT be suppressed.
+    isToolOnlyMessage.mockReturnValue(false);
+    hasNonToolAssistantContent.mockReturnValue(true);
+    getMessageText.mockImplementation((content: unknown) => {
+      if (typeof content === 'string') return content;
+      return '';
+    });
+
+    const { handleRuntimeEventState } = await import('@/stores/chat/runtime-event-handlers');
+
+    const h = makeHarness({
+      sending: true,
+      messages: [
+        { role: 'user', id: 'u1', content: 'question 1' },
+        { role: 'assistant', id: 'a1', content: 'same reply' },
+        { role: 'user', id: 'u2', content: 'question 2' },
+        // no assistant message after u2 yet
+      ],
+    });
+
+    handleRuntimeEventState(h.set as never, h.get as never, {
+      message: { role: 'assistant', content: 'same reply' },
+    }, 'final', 'run-2');
+
+    const msgs = h.read().messages;
+    const assistantMsgs = msgs.filter(m => m.role === 'assistant');
+    expect(assistantMsgs).toHaveLength(2);
   });
 
   it('clears runtime state on aborted event', async () => {
