@@ -102,10 +102,28 @@ export function Chat() {
   const [childTranscripts, setChildTranscripts] = useState<Record<string, RawMessage[]>>({});
 
   // ── Artifact panel state (Claude Desktop style) ─────────────────
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
+  // scannedArtifacts: built from message history (wiped & rebuilt on every message update)
+  // manualArtifacts: opened explicitly by the user (file clicks, etc.) — survive message updates
+  const [scannedArtifacts, setScannedArtifacts] = useState<Artifact[]>([]);
+  const [manualArtifacts, setManualArtifacts] = useState<Artifact[]>([]);
+  const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const prevArtifactCount = useRef(0);
+  const prevScannedCount = useRef(0);
+
+  // Combined list: scanned first, then manuals not already covered by a scanned artifact
+  const artifacts = useMemo(() => {
+    const uniqueManuals = manualArtifacts.filter(
+      (m) => !scannedArtifacts.some((s) => s.type === m.type && s.content === m.content),
+    );
+    return [...scannedArtifacts, ...uniqueManuals];
+  }, [scannedArtifacts, manualArtifacts]);
+
+  // Derive index from id so it stays correct when the list is rebuilt
+  const activeArtifactIndex = useMemo(() => {
+    if (!activeArtifactId) return 0;
+    const idx = artifacts.findIndex((a) => a.id === activeArtifactId);
+    return idx === -1 ? 0 : idx;
+  }, [artifacts, activeArtifactId]);
 
   // Resizable split panel
   const [panelWidth, setPanelWidth] = useState(46);
@@ -195,10 +213,11 @@ export function Chat() {
 
   // Clear artifacts when switching sessions
   useEffect(() => {
-    setArtifacts([]);
-    setActiveArtifactIndex(0);
-    setPanelOpen(false);
-    prevArtifactCount.current = 0;
+    setScannedArtifacts([]); // eslint-disable-line react-hooks/set-state-in-effect
+    setManualArtifacts([]); // eslint-disable-line react-hooks/set-state-in-effect
+    setActiveArtifactId(null); // eslint-disable-line react-hooks/set-state-in-effect
+    setPanelOpen(false); // eslint-disable-line react-hooks/set-state-in-effect
+    prevScannedCount.current = 0;
   }, [currentSessionKey]);
 
   // Gateway not running block has been completely removed so the UI always renders.
@@ -218,15 +237,15 @@ export function Chat() {
   const shouldRenderStreaming = sending && (hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus);
   const hasAnyStreamContent = hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus;
 
-  // Build the artifact list from all messages + streaming text.
-  // Must live after streamText is derived above.
+  // Build scanned artifacts from messages + streaming text.
+  // manualArtifacts (file previews opened by user) are kept in separate state
+  // so they survive this rebuild and don't get wiped on every message update.
   useEffect(() => {
     const found: Artifact[] = [];
     const seen = new Set<string>();
 
     const scanText = (text: string) => {
       for (const block of extractPreviewBlocks(text)) {
-        // Use trimmed content as dedup key to avoid near-identical duplicates
         const id = `${block.type}::${block.content.trim()}`;
         if (seen.has(id)) continue;
         seen.add(id);
@@ -244,47 +263,45 @@ export function Chat() {
     }
     if (streamText) scanText(streamText);
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setArtifacts(found);
+    setScannedArtifacts(found); // eslint-disable-line react-hooks/set-state-in-effect
 
-    // Auto-open panel when a new artifact appears, but only change the active
-    // index when the panel is closed. If the panel is already open the user is
-    // actively viewing an artifact — switching away would blank the preview.
-    if (found.length > prevArtifactCount.current) {
+    // Auto-open panel when a new scanned artifact appears.
+    // If panel is already open, keep the user's current view.
+    if (found.length > prevScannedCount.current) {
       if (!panelOpen) {
-        // Panel was closed — open it and jump to the latest artifact
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setActiveArtifactIndex(found.length - 1);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setActiveArtifactId(found[found.length - 1]?.id ?? null);
         setPanelOpen(true);
       }
-      // If panel is already open: add the new artifact to the list but keep
-      // the user's current view (they can navigate with prev/next arrows).
     }
-    prevArtifactCount.current = found.length;
-  }, [messages, streamText]);
+    prevScannedCount.current = found.length;
+  }, [messages, streamText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenArtifact = useCallback((input: ArtifactInput) => {
-    // Find by type + content; if missing (e.g. partial stream), append temporarily
-    setArtifacts((current) => {
-      const idx = current.findIndex(
+    // Check if already in scanned artifacts
+    const scannedMatch = scannedArtifacts.find(
+      (a) => a.type === input.type && a.content === input.content,
+    );
+    if (scannedMatch) {
+      setActiveArtifactId(scannedMatch.id);
+      setPanelOpen(true);
+      return;
+    }
+    // Add to manual artifacts (or reuse existing manual)
+    setManualArtifacts((prev) => {
+      const existing = prev.find(
         (a) => a.type === input.type && a.content === input.content,
       );
-      if (idx !== -1) {
-        setActiveArtifactIndex(idx);
+      if (existing) {
+        setActiveArtifactId(existing.id);
         setPanelOpen(true);
-        return current;
+        return prev;
       }
-      // Not yet in the list — add it on the fly
-      const newArtifact: Artifact = {
-        id: `manual::${Date.now()}`,
-        ...input,
-      };
-      setActiveArtifactIndex(current.length);
+      const newArtifact: Artifact = { id: `manual::${Date.now()}`, ...input };
+      setActiveArtifactId(newArtifact.id);
       setPanelOpen(true);
-      return [...current, newArtifact];
+      return [...prev, newArtifact];
     });
-  }, []);
+  }, [scannedArtifacts]);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -536,8 +553,11 @@ export function Chat() {
                 <PreviewPanel
                   artifacts={artifacts}
                   activeIndex={activeArtifactIndex}
-                  onNavigate={setActiveArtifactIndex}
-                  onClose={() => setPanelOpen(false)}
+                  onNavigate={(idx) => setActiveArtifactId(artifacts[idx]?.id ?? null)}
+                  onClose={() => {
+                    setPanelOpen(false);
+                    setManualArtifacts([]);
+                  }}
                 />
               </div>
             </>
