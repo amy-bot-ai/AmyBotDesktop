@@ -166,7 +166,6 @@ function findGlobalOpenClawDir(): string | null {
   } catch { /* which/where not found or openclaw not on PATH */ }
 
   // 3. Common nvm/fnm paths
-  const home = homedir();
   const nvmCandidates = [
     join(home, '.nvm', 'versions', 'node'),
     join(home, '.fnm', 'node-versions'),
