@@ -264,77 +264,13 @@ export class GatewayManager extends EventEmitter {
         logger.info('Connected to remote Gateway successfully');
         return;
       }
-      this.remoteMode = false;
-
-      await runGatewayStartupSequence({
-        port: this.status.port,
-        ownedPid: this.process?.pid,
-        shouldWaitForPortFree: process.platform === 'win32',
-        hasOwnedProcess: () => this.process?.pid != null && this.ownsProcess,
-        resetStartupStderrLines: () => {
-          this.recentStartupStderrLines = [];
-        },
-        getStartupStderrLines: () => this.recentStartupStderrLines,
-        assertLifecycle: (phase) => {
-          this.lifecycleController.assert(startEpoch, phase);
-        },
-        findExistingGateway: async (port) => {
-          // Always read the current process pid dynamically so that retries
-          // don't treat a just-spawned gateway as an orphan.  The ownedPid
-          // snapshot captured at start() entry is stale after startProcess()
-          // replaces this.process — leading to the just-started pid being
-          // immediately killed as a false orphan on the next retry iteration.
-          return await findExistingGatewayProcess({ port, ownedPid: this.process?.pid });
-        },
-        connect: async (port, externalToken) => {
-          await this.connect(`ws://localhost:${port}/ws`, externalToken);
-        },
-        onConnectedToExistingGateway: () => {
-
-          // If the existing gateway is actually our own spawned UtilityProcess
-          // (e.g. after a self-restart code=1012), keep ownership so that
-          // stop() can still terminate the process during a restart() cycle.
-          const isOwnProcess = this.process?.pid != null && this.ownsProcess;
-          if (!isOwnProcess) {
-            this.ownsProcess = false;
-            this.setStatus({ pid: undefined });
-          }
-
-          // Treat a successful reconnect to the owned process as a restart
-          // completion (e.g. after a Gateway code-1012 in-process restart).
-          // This updates lastRestartCompletedAt so that flushDeferredRestart
-          // drops any deferred restart requested before this reconnect,
-          // avoiding a redundant kill+respawn cycle.
-          if (isOwnProcess) {
-            this.restartController.recordRestartCompleted();
-          }
-
-          this.startHealthCheck();
-        },
-        waitForPortFree: async (port) => {
-          await waitForPortFree(port);
-        },
-        startProcess: async () => {
-          await this.startProcess();
-        },
-        waitForReady: async (port) => {
-          await waitForGatewayReady({
-            port,
-            getProcessExitCode: () => this.processExitCode,
-          });
-        },
-        onConnectedToManagedGateway: () => {
-          this.startHealthCheck();
-          logger.debug('Gateway started successfully');
-        },
-        runDoctorRepair: async () => await runOpenClawDoctorRepair(),
-        onDoctorRepairSuccess: () => {
-          this.setStatus({ state: 'starting', error: undefined, reconnectAttempts: 0 });
-        },
-        delay: async (ms) => {
-          await new Promise((resolve) => setTimeout(resolve, ms));
-        },
-      });
+      // Connect directly to the local openclaw gateway (users run it themselves).
+      const localUrl = `ws://localhost:${this.status.port}/ws`;
+      this.remoteMode = true;
+      logger.info(`Connecting to local Gateway: ${localUrl}`);
+      await this.connect(localUrl);
+      this.startHealthCheck();
+      logger.info('Connected to local Gateway successfully');
     } catch (error) {
       if (error instanceof LifecycleSupersededError) {
         logger.debug(error.message);

@@ -126,6 +126,14 @@ function findGlobalOpenClawDir(): string | null {
     if (pnpmHome) globalRoots.push(join(pnpmHome, 'node_modules'));
   } catch { /* ignore */ }
 
+  // 1b. Volta package store: ~/.volta/tools/image/packages/<pkg>/lib/node_modules/<pkg>
+  const home = homedir();
+  const voltaBase = join(home, '.volta', 'tools', 'image', 'packages');
+  for (const pkgName of ['@amybot/openclaw', 'openclaw']) {
+    const candidate = join(voltaBase, ...pkgName.split('/'), 'lib', 'node_modules', ...pkgName.split('/'));
+    if (existsSync(join(candidate, 'package.json'))) return candidate;
+  }
+
   for (const root of globalRoots) {
     // Check both @amybot/openclaw (private fork) and openclaw (upstream)
     for (const pkgName of ['@amybot/openclaw', 'openclaw']) {
