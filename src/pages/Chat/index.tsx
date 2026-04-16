@@ -27,6 +27,16 @@ import { cn } from '@/lib/utils';
 import { useStickToBottomInstant } from '@/hooks/use-stick-to-bottom-instant';
 import { useMinLoading } from '@/hooks/use-min-loading';
 
+// ── Auto-preview helpers (defined outside component to avoid re-creation) ──────
+const PREVIEW_EXTS: Record<string, ArtifactInput['type']> = {
+  md: 'markdown', markdown: 'markdown',
+  html: 'html', htm: 'html',
+  svg: 'svg', jsx: 'jsx', tsx: 'tsx', css: 'css',
+};
+const PREVIEW_INTENT = /\b(mở|xem|preview|open|hiển\s*thị|show|display|xem\s*thử|cho\s*tôi\s*xem)\b/i;
+// Matches absolute Unix/Mac/Windows file paths ending in a previewable extension
+const FILE_PATH_RE = /(?:^|[\s"'`(])([/\\][^\s"'`\n]*\.(?:md|markdown|html|htm|svg|jsx|tsx|css)|[A-Za-z]:[/\\][^\s"'`\n]*\.(?:md|markdown|html|htm|svg|jsx|tsx|css))(?:$|[\s"'`)])/im;
+
 export function Chat() {
   const { t } = useTranslation('chat');
   const gatewayStatus = useGatewayStore((s) => s.status);
@@ -109,6 +119,9 @@ export function Chat() {
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const prevScannedCount = useRef(0);
+  // Suppresses auto-open for existing artifacts when switching sessions.
+  // Stays true until the first non-empty scan completes for the new session.
+  const suppressAutoOpenRef = useRef(false);
 
   // Combined list: scanned first, then manuals not already covered by a scanned artifact
   const artifacts = useMemo(() => {
@@ -218,6 +231,7 @@ export function Chat() {
     setActiveArtifactId(null); // eslint-disable-line react-hooks/set-state-in-effect
     setPanelOpen(false); // eslint-disable-line react-hooks/set-state-in-effect
     prevScannedCount.current = 0;
+    suppressAutoOpenRef.current = true; // Block auto-open until first non-empty scan completes
   }, [currentSessionKey]);
 
   // Gateway not running block has been completely removed so the UI always renders.
@@ -265,15 +279,22 @@ export function Chat() {
 
     setScannedArtifacts(found); // eslint-disable-line react-hooks/set-state-in-effect
 
-    // Auto-open panel when a new scanned artifact appears.
-    // If panel is already open, keep the user's current view.
+    // Auto-open panel when a genuinely NEW artifact appears.
+    // suppressAutoOpenRef blocks this for pre-existing artifacts loaded on session switch.
     if (found.length > prevScannedCount.current) {
-      if (!panelOpen) {
+      if (!panelOpen && !suppressAutoOpenRef.current) {
         setActiveArtifactId(found[found.length - 1]?.id ?? null);
         setPanelOpen(true);
       }
     }
     prevScannedCount.current = found.length;
+
+    // Clear suppress flag AFTER the check, and only once we've seen a non-empty scan.
+    // This ensures the first batch of history artifacts (which may arrive in one or two
+    // scans) never triggers auto-open, while new messages after that still do.
+    if (found.length > 0) {
+      suppressAutoOpenRef.current = false;
+    }
   }, [messages, streamText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenArtifact = useCallback((input: ArtifactInput) => {
@@ -302,6 +323,56 @@ export function Chat() {
       return [...prev, newArtifact];
     });
   }, [scannedArtifacts]);
+
+  // ── Auto-preview on send ──────────────────────────────────────────
+  const handleSend = useCallback(async (
+    text: string,
+    attachments?: Parameters<typeof sendMessage>[1],
+    targetAgentId?: string | null,
+  ) => {
+    // ── Case 1: attached previewable file + preview-intent words ──
+    if (attachments && attachments.length > 0 && PREVIEW_INTENT.test(text)) {
+      const previewable = attachments.find((a) => {
+        const ext = a.fileName.split('.').pop()?.toLowerCase() ?? '';
+        return ext in PREVIEW_EXTS;
+      });
+      if (previewable) {
+        const ext = previewable.fileName.split('.').pop()?.toLowerCase() ?? '';
+        const type = PREVIEW_EXTS[ext];
+        if (type) {
+          hostApiFetch<{ success: boolean; content: string }>(
+            '/api/files/read-text',
+            { method: 'POST', body: JSON.stringify({ filePath: previewable.stagedPath }) },
+          ).then((result) => {
+            if (result.success) {
+              handleOpenArtifact({ type, content: result.content, title: previewable.fileName });
+            }
+          }).catch(() => { /* silent — preview is best-effort */ });
+        }
+      }
+    }
+
+    // ── Case 2: absolute file path in message text ──
+    const pathMatch = FILE_PATH_RE.exec(text);
+    const filePath = pathMatch?.[1];
+    if (filePath) {
+      const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+      const type = PREVIEW_EXTS[ext];
+      if (type) {
+        const title = filePath.split(/[/\\]/).pop() ?? filePath;
+        hostApiFetch<{ success: boolean; content: string }>(
+          '/api/files/read-text',
+          { method: 'POST', body: JSON.stringify({ filePath }) },
+        ).then((result) => {
+          if (result.success) {
+            handleOpenArtifact({ type, content: result.content, title });
+          }
+        }).catch(() => { /* silent — preview is best-effort */ });
+      }
+    }
+
+    sendMessage(text, attachments, targetAgentId);
+  }, [sendMessage, handleOpenArtifact]);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -585,7 +656,7 @@ export function Chat() {
 
       {/* Input Area */}
       <ChatInput
-        onSend={sendMessage}
+        onSend={handleSend}
         onStop={abortRun}
         disabled={!isGatewayRunning}
         sending={sending}
