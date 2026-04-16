@@ -1901,8 +1901,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
               : { ...finalMsg, role: (finalMsg.role || 'assistant') as RawMessage['role'], id: msgId };
             const clearPendingImages = { pendingToolImages: [] as AttachedFileMeta[] };
 
-            // Check if message already exists (prevent duplicates)
-            const alreadyExists = s.messages.some(m => m.id === msgId);
+            // Check if message already exists (prevent duplicates).
+            // Primary: match by id. Fallback: when the final event has no server-assigned
+            // id (so we synthesized "run-${runId}"), a history poll may have already loaded
+            // this message with its real server id — detect by timestamp proximity.
+            const rawFinalTs = Number(finalMsg.timestamp ?? 0);
+            const finalTsMs = rawFinalTs > 0 ? (rawFinalTs < 1e12 ? rawFinalTs * 1000 : rawFinalTs) : 0;
+            const alreadyExists = s.messages.some(m => {
+              if (m.id === msgId) return true;
+              if (!finalMsg.id && m.role !== 'user' && finalTsMs > 0 && m.timestamp) {
+                const mTs = Number(m.timestamp);
+                const mTsMs = mTs < 1e12 ? mTs * 1000 : mTs;
+                if (Math.abs(mTsMs - finalTsMs) < 5000) return true;
+              }
+              return false;
+            });
             if (alreadyExists) {
               return toolOnly ? {
                 streamingText: '',
