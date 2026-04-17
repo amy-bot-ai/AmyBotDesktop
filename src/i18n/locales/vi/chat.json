@@ -8,7 +8,17 @@
         "askQuestionsDesc": "Thực hiện các yêu cầu theo định hướng tác vụ",
         "creativeTasks": "Thực thi liên tục",
         "creativeTasksDesc": "Tiếp tục thực hiện công việc nhiều bước",
-        "brainstorming": "Đa tác nhân song song"
+        "brainstorming": "Đa tác nhân song song",
+        "quickPrompts": [
+            "Hôm nay bạn đã làm gì?",
+            "Kiểm tra các tác vụ đã lên lịch",
+            "Tóm tắt hoạt động gần đây",
+            "Các tác vụ nào đang chờ xử lý?",
+            "Hiển thị tình trạng hệ thống",
+            "Có lỗi hoặc sự cố nào không?",
+            "Tuần này có gì thay đổi?",
+            "Bạn có thể làm gì?"
+        ]
     },
     "noLogs": "(Chưa có nhật ký nào)",
     "toolbar": {

@@ -406,6 +406,7 @@ export function Chat() {
   }, []);
 
   const isEmpty = messages.length === 0 && !sending;
+  const quickPrompts = t('welcome.quickPrompts', { returnObjects: true }) as string[];
   const subagentCompletionInfos = messages.map((message) => parseSubagentCompletionInfo(message));
   const nextUserMessageIndexes = new Array<number>(messages.length).fill(-1);
   let nextUserMessageIndex = -1;
@@ -494,69 +495,95 @@ export function Chat() {
         <ChatToolbar />
       </div>
 
-      {/* Messages Area */}
-      <div className="min-h-0 flex-1 overflow-hidden py-4">
-        <div
-          ref={splitContainerRef}
-          className={cn(
-            "flex h-full min-h-0 gap-0",
-            panelOpen && artifacts.length > 0
-              ? "w-full"
-              : "mx-auto max-w-6xl flex-col lg:flex-row lg:items-stretch",
-          )}
-        >
-          <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-            <div ref={contentRef} className={cn(
-              "mx-auto space-y-4 px-4",
-              panelOpen && artifacts.length > 0 ? "max-w-2xl" : "max-w-4xl",
-            )}>
-              {isEmpty ? (
-                <WelcomeScreen />
-              ) : (
-                <>
+      {isEmpty ? (
+        /* ── New Chat: title + input + pills all vertically centered ── */
+        <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8">
+          {/* Title + agent subtitle */}
+          <div className="text-center mb-10">
+            <h1 className="text-3xl font-semibold tracking-tight text-stone-700 dark:text-stone-300">
+              {t('welcome.subtitle')}
+            </h1>
+            {currentAgentId && (
+              <p className="mt-2 text-sm text-stone-400 dark:text-stone-500">
+                🤖 {agents?.find((a) => a.id === currentAgentId)?.name ?? currentAgentId}
+              </p>
+            )}
+          </div>
+
+          {/* Input with rotating placeholder */}
+          <ChatInput
+            onSend={handleSend}
+            onStop={abortRun}
+            disabled={!isGatewayRunning}
+            sending={sending}
+            isEmpty={isEmpty}
+            quickPrompts={quickPrompts}
+          />
+
+          {/* Quick action pills */}
+          <WelcomePills prompts={quickPrompts} onSend={(text) => void handleSend(text)} />
+        </div>
+      ) : (
+        /* ── Active Chat: messages scroll area + input at bottom ── */
+        <>
+          <div className="min-h-0 flex-1 overflow-hidden py-4">
+            <div
+              ref={splitContainerRef}
+              className={cn(
+                "flex h-full min-h-0 gap-0",
+                panelOpen && artifacts.length > 0
+                  ? "w-full"
+                  : "mx-auto max-w-6xl flex-col lg:flex-row lg:items-stretch",
+              )}
+            >
+              <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+                <div ref={contentRef} className={cn(
+                  "mx-auto space-y-4 px-4",
+                  panelOpen && artifacts.length > 0 ? "max-w-2xl" : "max-w-4xl",
+                )}>
                   {messages.map((msg, idx) => {
                     const suppressToolCards = userRunCards.some((card) =>
                       idx > card.triggerIndex && idx <= card.segmentEnd,
                     );
                     return (
-                    <div
-                      key={msg.id || `msg-${idx}`}
-                      className="space-y-3"
-                      id={`chat-message-${idx}`}
-                      data-testid={`chat-message-${idx}`}
-                    >
-                      <ChatMessage
-                        message={msg}
-                        showThinking={showThinking}
-                        suppressToolCards={suppressToolCards}
-                        suppressProcessAttachments={suppressToolCards}
-                        onPreview={handleOpenArtifact}
-                      />
-                      {showGraph && userRunCards
-                        .filter((card) => card.triggerIndex === idx)
-                        .map((card) => (
-                          <ExecutionGraphCard
-                            key={`graph-${idx}`}
-                            agentLabel={card.agentLabel}
-                            sessionLabel={card.sessionLabel}
-                            steps={card.steps}
-                            active={card.active}
-                            onJumpToTrigger={() => {
-                              document.getElementById(`chat-message-${card.triggerIndex}`)?.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'center',
-                              });
-                            }}
-                            onJumpToReply={() => {
-                              if (card.replyIndex == null) return;
-                              document.getElementById(`chat-message-${card.replyIndex}`)?.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'center',
-                              });
-                            }}
-                          />
-                        ))}
-                    </div>
+                      <div
+                        key={msg.id || `msg-${idx}`}
+                        className="space-y-3"
+                        id={`chat-message-${idx}`}
+                        data-testid={`chat-message-${idx}`}
+                      >
+                        <ChatMessage
+                          message={msg}
+                          showThinking={showThinking}
+                          suppressToolCards={suppressToolCards}
+                          suppressProcessAttachments={suppressToolCards}
+                          onPreview={handleOpenArtifact}
+                        />
+                        {showGraph && userRunCards
+                          .filter((card) => card.triggerIndex === idx)
+                          .map((card) => (
+                            <ExecutionGraphCard
+                              key={`graph-${idx}`}
+                              agentLabel={card.agentLabel}
+                              sessionLabel={card.sessionLabel}
+                              steps={card.steps}
+                              active={card.active}
+                              onJumpToTrigger={() => {
+                                document.getElementById(`chat-message-${card.triggerIndex}`)?.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'center',
+                                });
+                              }}
+                              onJumpToReply={() => {
+                                if (card.replyIndex == null) return;
+                                document.getElementById(`chat-message-${card.replyIndex}`)?.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'center',
+                                });
+                              }}
+                            />
+                          ))}
+                      </div>
                     );
                   })}
 
@@ -591,77 +618,72 @@ export function Chat() {
                   {sending && !pendingFinal && !hasAnyStreamContent && (
                     <TypingIndicator />
                   )}
+                </div>
+              </div>
+
+              {/* Drag handle + Artifact preview panel */}
+              {panelOpen && artifacts.length > 0 && (
+                <>
+                  <div
+                    onMouseDown={handleResizeStart}
+                    className="group relative w-1 shrink-0 cursor-col-resize bg-black/10 dark:bg-white/10 hover:bg-primary/30 active:bg-primary/50 transition-colors"
+                  >
+                    {isDragging && (
+                      <div className="fixed inset-0 z-[9999] cursor-col-resize" />
+                    )}
+                    <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center gap-[5px] pointer-events-none">
+                      <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                      <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                      <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                    </div>
+                  </div>
+                  <div
+                    style={{ width: `${panelWidth}%` }}
+                    className="shrink-0 min-w-[240px] overflow-hidden"
+                  >
+                    <PreviewPanel
+                      artifacts={artifacts}
+                      activeIndex={activeArtifactIndex}
+                      onNavigate={(idx) => setActiveArtifactId(artifacts[idx]?.id ?? null)}
+                      onClose={() => {
+                        setPanelOpen(false);
+                        setManualArtifacts([]);
+                      }}
+                    />
+                  </div>
                 </>
               )}
             </div>
           </div>
 
-          {/* Drag handle + Artifact preview panel */}
-          {panelOpen && artifacts.length > 0 && (
-            <>
-              {/* Resizable divider */}
-              <div
-                onMouseDown={handleResizeStart}
-                className="group relative w-1 shrink-0 cursor-col-resize bg-black/10 dark:bg-white/10 hover:bg-primary/30 active:bg-primary/50 transition-colors"
-              >
-                {/* Drag-active overlay — covers the entire viewport (incl. iframe) so
-                    mouse events are never swallowed by child iframes during resize */}
-                {isDragging && (
-                  <div className="fixed inset-0 z-[9999] cursor-col-resize" />
-                )}
-                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center gap-[5px] pointer-events-none">
-                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
-                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
-                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
-                </div>
+          {/* Error bar */}
+          {error && (
+            <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
+              <div className="max-w-4xl mx-auto flex items-center justify-between">
+                <p className="text-sm text-destructive flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {error}
+                </p>
+                <button
+                  onClick={clearError}
+                  className="text-xs text-destructive/60 hover:text-destructive underline"
+                >
+                  {t('common:actions.dismiss')}
+                </button>
               </div>
-
-              {/* Panel wrapper — width controlled by drag */}
-              <div
-                style={{ width: `${panelWidth}%` }}
-                className="shrink-0 min-w-[240px] overflow-hidden"
-              >
-                <PreviewPanel
-                  artifacts={artifacts}
-                  activeIndex={activeArtifactIndex}
-                  onNavigate={(idx) => setActiveArtifactId(artifacts[idx]?.id ?? null)}
-                  onClose={() => {
-                    setPanelOpen(false);
-                    setManualArtifacts([]);
-                  }}
-                />
-              </div>
-            </>
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Error bar */}
-      {error && (
-        <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <p className="text-sm text-destructive flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              {error}
-            </p>
-            <button
-              onClick={clearError}
-              className="text-xs text-destructive/60 hover:text-destructive underline"
-            >
-              {t('common:actions.dismiss')}
-            </button>
-          </div>
-        </div>
+          {/* Input */}
+          <ChatInput
+            onSend={handleSend}
+            onStop={abortRun}
+            disabled={!isGatewayRunning}
+            sending={sending}
+            isEmpty={isEmpty}
+          />
+        </>
       )}
-
-      {/* Input Area */}
-      <ChatInput
-        onSend={handleSend}
-        onStop={abortRun}
-        disabled={!isGatewayRunning}
-        sending={sending}
-        isEmpty={isEmpty}
-      />
 
       {/* Transparent loading overlay */}
       {minLoading && !sending && (
@@ -675,32 +697,22 @@ export function Chat() {
   );
 }
 
-// ── Welcome Screen ──────────────────────────────────────────────
+// ── Welcome Pills (below input in empty state) ──────────────────
 
-function WelcomeScreen() {
-  const { t } = useTranslation('chat');
-  const quickActions = [
-    { key: 'askQuestions', label: t('welcome.askQuestions') },
-    { key: 'creativeTasks', label: t('welcome.creativeTasks') },
-    { key: 'brainstorming', label: t('welcome.brainstorming') },
-  ];
-
+function WelcomePills({ prompts, onSend }: { prompts: string[]; onSend: (text: string) => void }) {
+  if (!prompts.length) return null;
   return (
-    <div className="flex flex-col items-center justify-center text-center h-[60vh]">
-      <h1 className="text-2xl md:text-3xl font-serif text-foreground/80 mb-8 font-normal tracking-tight">
-        {t('welcome.subtitle')}
-      </h1>
-
-      <div className="flex flex-wrap items-center justify-center gap-2.5 max-w-lg w-full">
-        {quickActions.map(({ key, label }) => (
-          <button 
-            key={key}
-            className="px-4 py-1.5 rounded-full border border-black/10 dark:border-white/10 text-[13px] font-medium text-foreground/70 hover:bg-black/5 dark:hover:bg-white/5 transition-colors bg-black/[0.02]"
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+    <div className="w-full max-w-3xl mx-auto px-4 pb-2 flex flex-wrap justify-center gap-2.5">
+      {prompts.map((label) => (
+        <button
+          key={label}
+          type="button"
+          onClick={() => onSend(label)}
+          className="rounded-full border border-stone-300/70 bg-stone-100/80 px-4 py-2 text-sm text-stone-600 transition-all hover:border-stone-400/70 hover:bg-stone-200/60 hover:text-stone-800 dark:border-stone-700/50 dark:bg-stone-800/40 dark:text-stone-400 dark:hover:bg-stone-700/50 dark:hover:text-stone-200"
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
