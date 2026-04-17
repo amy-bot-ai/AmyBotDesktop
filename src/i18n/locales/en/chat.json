@@ -8,7 +8,17 @@
         "askQuestionsDesc": "Work on task-oriented requests",
         "creativeTasks": "Continuous Execution",
         "creativeTasksDesc": "Keep running through multi-step work",
-        "brainstorming": "Multi-Agent Parallel"
+        "brainstorming": "Multi-Agent Parallel",
+        "quickPrompts": [
+            "What did you do today?",
+            "Check my scheduled tasks",
+            "Summarize recent activity",
+            "What tasks are pending?",
+            "Show system health",
+            "Any errors or issues?",
+            "What changed this week?",
+            "What can you do?"
+        ]
     },
     "noLogs": "(No logs available yet)",
     "toolbar": {

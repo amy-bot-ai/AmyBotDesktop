@@ -196,5 +196,21 @@ export async function handleFileRoutes(
     return true;
   }
 
+  if (url.pathname === '/api/files/read-text' && req.method === 'POST') {
+    try {
+      const body = await parseJsonBody<{ filePath: string }>(req);
+      if (!body.filePath) {
+        sendJson(res, 400, { success: false, error: 'filePath is required' });
+        return true;
+      }
+      const fsP = await import('node:fs/promises');
+      const content = await fsP.readFile(body.filePath, 'utf8');
+      sendJson(res, 200, { success: true, content });
+    } catch (error) {
+      sendJson(res, 500, { success: false, error: String(error) });
+    }
+    return true;
+  }
+
   return false;
 }

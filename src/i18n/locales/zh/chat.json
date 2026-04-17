@@ -8,7 +8,17 @@
         "askQuestionsDesc": "处理面向任务的请求",
         "creativeTasks": "持续执行",
         "creativeTasksDesc": "持续推进多步骤工作",
-        "brainstorming": "多智能体并行"
+        "brainstorming": "多智能体并行",
+        "quickPrompts": [
+            "你今天做了什么？",
+            "查看已安排的任务",
+            "总结最近的活动",
+            "有哪些待处理的任务？",
+            "显示系统健康状态",
+            "有错误或问题吗？",
+            "本周有什么变化？",
+            "你能做什么？"
+        ]
     },
     "noLogs": "（暂无日志）",
     "toolbar": {

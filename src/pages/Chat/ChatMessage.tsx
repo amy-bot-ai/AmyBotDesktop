@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { invokeIpc } from '@/lib/api-client';
+import { hostApiFetch } from '@/lib/host-api';
 import type { RawMessage, AttachedFileMeta } from '@/stores/chat';
 import { extractText, extractThinking, extractImages, extractToolUse, formatTimestamp, extractArtifactTitle, extractPreviewBlocks } from './message-utils';
 import type { ArtifactInput, ArtifactType } from './message-utils';
@@ -162,7 +163,7 @@ export const ChatMessage = memo(function ChatMessage({
                 );
               }
               // Non-image files → file card
-              return <FileCard key={`local-${i}`} file={file} />;
+              return <FileCard key={`local-${i}`} file={file} onPreview={onPreview} />;
             })}
           </div>
         )}
@@ -233,7 +234,7 @@ export const ChatMessage = memo(function ChatMessage({
                   </div>
                 );
               }
-              return <FileCard key={`local-${i}`} file={file} />;
+              return <FileCard key={`local-${i}`} file={file} onPreview={onPreview} />;
             })}
           </div>
         )}
@@ -601,21 +602,56 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
   return <File className={className} />;
 }
 
-function FileCard({ file }: { file: AttachedFileMeta }) {
-  const handleOpen = useCallback(() => {
-    if (file.filePath) {
-      invokeIpc('shell:openPath', file.filePath);
+// Map file extensions to ArtifactType for the preview panel
+const PREVIEWABLE_EXT: Record<string, ArtifactType> = {
+  md: 'markdown', markdown: 'markdown',
+  html: 'html', htm: 'html',
+  svg: 'svg',
+  jsx: 'jsx',
+  tsx: 'tsx',
+  css: 'css',
+};
+
+function getPreviewType(fileName: string): ArtifactType | null {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  return PREVIEWABLE_EXT[ext] ?? null;
+}
+
+function FileCard({ file, onPreview }: { file: AttachedFileMeta; onPreview?: (artifact: ArtifactInput) => void }) {
+  const previewType = getPreviewType(file.fileName);
+  const canPreview = !!(previewType && onPreview && file.filePath);
+
+  const handleOpen = useCallback(async () => {
+    if (!file.filePath) return;
+    if (canPreview && previewType && onPreview) {
+      try {
+        const result = await hostApiFetch<{ success: boolean; content: string }>(
+          '/api/files/read-text',
+          { method: 'POST', body: JSON.stringify({ filePath: file.filePath }) },
+        );
+        if (result.success) {
+          onPreview({
+            type: previewType,
+            content: result.content,
+            title: file.fileName,
+          });
+          return;
+        }
+      } catch {
+        // Fall through to open in system app on error
+      }
     }
-  }, [file.filePath]);
+    invokeIpc('shell:openPath', file.filePath);
+  }, [file.filePath, canPreview, previewType, onPreview]);
 
   return (
-    <div 
+    <div
       className={cn(
         "flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 px-3 py-2.5 bg-black/5 dark:bg-white/5 max-w-[220px]",
         file.filePath && "cursor-pointer hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
       )}
       onClick={handleOpen}
-      title={file.filePath ? "Open file" : undefined}
+      title={canPreview ? `Preview ${file.fileName}` : file.filePath ? "Open file" : undefined}
     >
       <FileIcon mimeType={file.mimeType} className="h-5 w-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 overflow-hidden">

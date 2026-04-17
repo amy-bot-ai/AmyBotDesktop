@@ -27,6 +27,16 @@ import { cn } from '@/lib/utils';
 import { useStickToBottomInstant } from '@/hooks/use-stick-to-bottom-instant';
 import { useMinLoading } from '@/hooks/use-min-loading';
 
+// ── Auto-preview helpers (defined outside component to avoid re-creation) ──────
+const PREVIEW_EXTS: Record<string, ArtifactInput['type']> = {
+  md: 'markdown', markdown: 'markdown',
+  html: 'html', htm: 'html',
+  svg: 'svg', jsx: 'jsx', tsx: 'tsx', css: 'css',
+};
+const PREVIEW_INTENT = /\b(mở|xem|preview|open|hiển\s*thị|show|display|xem\s*thử|cho\s*tôi\s*xem)\b/i;
+// Matches absolute Unix/Mac/Windows file paths ending in a previewable extension
+const FILE_PATH_RE = /(?:^|[\s"'`(])([/\\][^\s"'`\n]*\.(?:md|markdown|html|htm|svg|jsx|tsx|css)|[A-Za-z]:[/\\][^\s"'`\n]*\.(?:md|markdown|html|htm|svg|jsx|tsx|css))(?:$|[\s"'`)])/im;
+
 export function Chat() {
   const { t } = useTranslation('chat');
   const gatewayStatus = useGatewayStore((s) => s.status);
@@ -102,10 +112,31 @@ export function Chat() {
   const [childTranscripts, setChildTranscripts] = useState<Record<string, RawMessage[]>>({});
 
   // ── Artifact panel state (Claude Desktop style) ─────────────────
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
+  // scannedArtifacts: built from message history (wiped & rebuilt on every message update)
+  // manualArtifacts: opened explicitly by the user (file clicks, etc.) — survive message updates
+  const [scannedArtifacts, setScannedArtifacts] = useState<Artifact[]>([]);
+  const [manualArtifacts, setManualArtifacts] = useState<Artifact[]>([]);
+  const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const prevArtifactCount = useRef(0);
+  const prevScannedCount = useRef(0);
+  // Suppresses auto-open for existing artifacts when switching sessions.
+  // Stays true until the first non-empty scan completes for the new session.
+  const suppressAutoOpenRef = useRef(false);
+
+  // Combined list: scanned first, then manuals not already covered by a scanned artifact
+  const artifacts = useMemo(() => {
+    const uniqueManuals = manualArtifacts.filter(
+      (m) => !scannedArtifacts.some((s) => s.type === m.type && s.content === m.content),
+    );
+    return [...scannedArtifacts, ...uniqueManuals];
+  }, [scannedArtifacts, manualArtifacts]);
+
+  // Derive index from id so it stays correct when the list is rebuilt
+  const activeArtifactIndex = useMemo(() => {
+    if (!activeArtifactId) return 0;
+    const idx = artifacts.findIndex((a) => a.id === activeArtifactId);
+    return idx === -1 ? 0 : idx;
+  }, [artifacts, activeArtifactId]);
 
   // Resizable split panel
   const [panelWidth, setPanelWidth] = useState(46);
@@ -195,10 +226,12 @@ export function Chat() {
 
   // Clear artifacts when switching sessions
   useEffect(() => {
-    setArtifacts([]);
-    setActiveArtifactIndex(0);
-    setPanelOpen(false);
-    prevArtifactCount.current = 0;
+    setScannedArtifacts([]); // eslint-disable-line react-hooks/set-state-in-effect
+    setManualArtifacts([]); // eslint-disable-line react-hooks/set-state-in-effect
+    setActiveArtifactId(null); // eslint-disable-line react-hooks/set-state-in-effect
+    setPanelOpen(false); // eslint-disable-line react-hooks/set-state-in-effect
+    prevScannedCount.current = 0;
+    suppressAutoOpenRef.current = true; // Block auto-open until first non-empty scan completes
   }, [currentSessionKey]);
 
   // Gateway not running block has been completely removed so the UI always renders.
@@ -218,15 +251,15 @@ export function Chat() {
   const shouldRenderStreaming = sending && (hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus);
   const hasAnyStreamContent = hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus;
 
-  // Build the artifact list from all messages + streaming text.
-  // Must live after streamText is derived above.
+  // Build scanned artifacts from messages + streaming text.
+  // manualArtifacts (file previews opened by user) are kept in separate state
+  // so they survive this rebuild and don't get wiped on every message update.
   useEffect(() => {
     const found: Artifact[] = [];
     const seen = new Set<string>();
 
     const scanText = (text: string) => {
       for (const block of extractPreviewBlocks(text)) {
-        // Use trimmed content as dedup key to avoid near-identical duplicates
         const id = `${block.type}::${block.content.trim()}`;
         if (seen.has(id)) continue;
         seen.add(id);
@@ -244,47 +277,102 @@ export function Chat() {
     }
     if (streamText) scanText(streamText);
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setArtifacts(found);
+    setScannedArtifacts(found); // eslint-disable-line react-hooks/set-state-in-effect
 
-    // Auto-open panel when a new artifact appears, but only change the active
-    // index when the panel is closed. If the panel is already open the user is
-    // actively viewing an artifact — switching away would blank the preview.
-    if (found.length > prevArtifactCount.current) {
-      if (!panelOpen) {
-        // Panel was closed — open it and jump to the latest artifact
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setActiveArtifactIndex(found.length - 1);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Auto-open panel when a genuinely NEW artifact appears.
+    // suppressAutoOpenRef blocks this for pre-existing artifacts loaded on session switch.
+    if (found.length > prevScannedCount.current) {
+      if (!panelOpen && !suppressAutoOpenRef.current) {
+        setActiveArtifactId(found[found.length - 1]?.id ?? null);
         setPanelOpen(true);
       }
-      // If panel is already open: add the new artifact to the list but keep
-      // the user's current view (they can navigate with prev/next arrows).
     }
-    prevArtifactCount.current = found.length;
-  }, [messages, streamText]);
+    prevScannedCount.current = found.length;
+
+    // Clear suppress flag AFTER the check, and only once we've seen a non-empty scan.
+    // This ensures the first batch of history artifacts (which may arrive in one or two
+    // scans) never triggers auto-open, while new messages after that still do.
+    if (found.length > 0) {
+      suppressAutoOpenRef.current = false;
+    }
+  }, [messages, streamText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenArtifact = useCallback((input: ArtifactInput) => {
-    // Find by type + content; if missing (e.g. partial stream), append temporarily
-    setArtifacts((current) => {
-      const idx = current.findIndex(
+    // Check if already in scanned artifacts
+    const scannedMatch = scannedArtifacts.find(
+      (a) => a.type === input.type && a.content === input.content,
+    );
+    if (scannedMatch) {
+      setActiveArtifactId(scannedMatch.id);
+      setPanelOpen(true);
+      return;
+    }
+    // Add to manual artifacts (or reuse existing manual)
+    setManualArtifacts((prev) => {
+      const existing = prev.find(
         (a) => a.type === input.type && a.content === input.content,
       );
-      if (idx !== -1) {
-        setActiveArtifactIndex(idx);
+      if (existing) {
+        setActiveArtifactId(existing.id);
         setPanelOpen(true);
-        return current;
+        return prev;
       }
-      // Not yet in the list — add it on the fly
-      const newArtifact: Artifact = {
-        id: `manual::${Date.now()}`,
-        ...input,
-      };
-      setActiveArtifactIndex(current.length);
+      const newArtifact: Artifact = { id: `manual::${Date.now()}`, ...input };
+      setActiveArtifactId(newArtifact.id);
       setPanelOpen(true);
-      return [...current, newArtifact];
+      return [...prev, newArtifact];
     });
-  }, []);
+  }, [scannedArtifacts]);
+
+  // ── Auto-preview on send ──────────────────────────────────────────
+  const handleSend = useCallback(async (
+    text: string,
+    attachments?: Parameters<typeof sendMessage>[1],
+    targetAgentId?: string | null,
+  ) => {
+    // ── Case 1: attached previewable file + preview-intent words ──
+    if (attachments && attachments.length > 0 && PREVIEW_INTENT.test(text)) {
+      const previewable = attachments.find((a) => {
+        const ext = a.fileName.split('.').pop()?.toLowerCase() ?? '';
+        return ext in PREVIEW_EXTS;
+      });
+      if (previewable) {
+        const ext = previewable.fileName.split('.').pop()?.toLowerCase() ?? '';
+        const type = PREVIEW_EXTS[ext];
+        if (type) {
+          hostApiFetch<{ success: boolean; content: string }>(
+            '/api/files/read-text',
+            { method: 'POST', body: JSON.stringify({ filePath: previewable.stagedPath }) },
+          ).then((result) => {
+            if (result.success) {
+              handleOpenArtifact({ type, content: result.content, title: previewable.fileName });
+            }
+          }).catch(() => { /* silent — preview is best-effort */ });
+        }
+      }
+    }
+
+    // ── Case 2: absolute file path in message text ──
+    const pathMatch = FILE_PATH_RE.exec(text);
+    const filePath = pathMatch?.[1];
+    if (filePath) {
+      const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+      const type = PREVIEW_EXTS[ext];
+      if (type) {
+        const title = filePath.split(/[/\\]/).pop() ?? filePath;
+        hostApiFetch<{ success: boolean; content: string }>(
+          '/api/files/read-text',
+          { method: 'POST', body: JSON.stringify({ filePath }) },
+        ).then((result) => {
+          if (result.success) {
+            handleOpenArtifact({ type, content: result.content, title });
+          }
+        }).catch(() => { /* silent — preview is best-effort */ });
+      }
+    }
+
+    sendMessage(text, attachments, targetAgentId);
+  }, [sendMessage, handleOpenArtifact]);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -318,6 +406,7 @@ export function Chat() {
   }, []);
 
   const isEmpty = messages.length === 0 && !sending;
+  const quickPrompts = t('welcome.quickPrompts', { returnObjects: true }) as string[];
   const subagentCompletionInfos = messages.map((message) => parseSubagentCompletionInfo(message));
   const nextUserMessageIndexes = new Array<number>(messages.length).fill(-1);
   let nextUserMessageIndex = -1;
@@ -406,69 +495,95 @@ export function Chat() {
         <ChatToolbar />
       </div>
 
-      {/* Messages Area */}
-      <div className="min-h-0 flex-1 overflow-hidden py-4">
-        <div
-          ref={splitContainerRef}
-          className={cn(
-            "flex h-full min-h-0 gap-0",
-            panelOpen && artifacts.length > 0
-              ? "w-full"
-              : "mx-auto max-w-6xl flex-col lg:flex-row lg:items-stretch",
-          )}
-        >
-          <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-            <div ref={contentRef} className={cn(
-              "mx-auto space-y-4 px-4",
-              panelOpen && artifacts.length > 0 ? "max-w-2xl" : "max-w-4xl",
-            )}>
-              {isEmpty ? (
-                <WelcomeScreen />
-              ) : (
-                <>
+      {isEmpty ? (
+        /* ── New Chat: title + input + pills all vertically centered ── */
+        <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8">
+          {/* Title + agent subtitle */}
+          <div className="text-center mb-10">
+            <h1 className="text-3xl font-semibold tracking-tight text-stone-700 dark:text-stone-300">
+              {t('welcome.subtitle')}
+            </h1>
+            {currentAgentId && (
+              <p className="mt-2 text-sm text-stone-400 dark:text-stone-500">
+                🤖 {agents?.find((a) => a.id === currentAgentId)?.name ?? currentAgentId}
+              </p>
+            )}
+          </div>
+
+          {/* Input with rotating placeholder */}
+          <ChatInput
+            onSend={handleSend}
+            onStop={abortRun}
+            disabled={!isGatewayRunning}
+            sending={sending}
+            isEmpty={isEmpty}
+            quickPrompts={quickPrompts}
+          />
+
+          {/* Quick action pills */}
+          <WelcomePills prompts={quickPrompts} onSend={(text) => void handleSend(text)} />
+        </div>
+      ) : (
+        /* ── Active Chat: messages scroll area + input at bottom ── */
+        <>
+          <div className="min-h-0 flex-1 overflow-hidden py-4">
+            <div
+              ref={splitContainerRef}
+              className={cn(
+                "flex h-full min-h-0 gap-0",
+                panelOpen && artifacts.length > 0
+                  ? "w-full"
+                  : "mx-auto max-w-6xl flex-col lg:flex-row lg:items-stretch",
+              )}
+            >
+              <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+                <div ref={contentRef} className={cn(
+                  "mx-auto space-y-4 px-4",
+                  panelOpen && artifacts.length > 0 ? "max-w-2xl" : "max-w-4xl",
+                )}>
                   {messages.map((msg, idx) => {
                     const suppressToolCards = userRunCards.some((card) =>
                       idx > card.triggerIndex && idx <= card.segmentEnd,
                     );
                     return (
-                    <div
-                      key={msg.id || `msg-${idx}`}
-                      className="space-y-3"
-                      id={`chat-message-${idx}`}
-                      data-testid={`chat-message-${idx}`}
-                    >
-                      <ChatMessage
-                        message={msg}
-                        showThinking={showThinking}
-                        suppressToolCards={suppressToolCards}
-                        suppressProcessAttachments={suppressToolCards}
-                        onPreview={handleOpenArtifact}
-                      />
-                      {showGraph && userRunCards
-                        .filter((card) => card.triggerIndex === idx)
-                        .map((card) => (
-                          <ExecutionGraphCard
-                            key={`graph-${idx}`}
-                            agentLabel={card.agentLabel}
-                            sessionLabel={card.sessionLabel}
-                            steps={card.steps}
-                            active={card.active}
-                            onJumpToTrigger={() => {
-                              document.getElementById(`chat-message-${card.triggerIndex}`)?.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'center',
-                              });
-                            }}
-                            onJumpToReply={() => {
-                              if (card.replyIndex == null) return;
-                              document.getElementById(`chat-message-${card.replyIndex}`)?.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'center',
-                              });
-                            }}
-                          />
-                        ))}
-                    </div>
+                      <div
+                        key={msg.id || `msg-${idx}`}
+                        className="space-y-3"
+                        id={`chat-message-${idx}`}
+                        data-testid={`chat-message-${idx}`}
+                      >
+                        <ChatMessage
+                          message={msg}
+                          showThinking={showThinking}
+                          suppressToolCards={suppressToolCards}
+                          suppressProcessAttachments={suppressToolCards}
+                          onPreview={handleOpenArtifact}
+                        />
+                        {showGraph && userRunCards
+                          .filter((card) => card.triggerIndex === idx)
+                          .map((card) => (
+                            <ExecutionGraphCard
+                              key={`graph-${idx}`}
+                              agentLabel={card.agentLabel}
+                              sessionLabel={card.sessionLabel}
+                              steps={card.steps}
+                              active={card.active}
+                              onJumpToTrigger={() => {
+                                document.getElementById(`chat-message-${card.triggerIndex}`)?.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'center',
+                                });
+                              }}
+                              onJumpToReply={() => {
+                                if (card.replyIndex == null) return;
+                                document.getElementById(`chat-message-${card.replyIndex}`)?.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'center',
+                                });
+                              }}
+                            />
+                          ))}
+                      </div>
                     );
                   })}
 
@@ -503,74 +618,72 @@ export function Chat() {
                   {sending && !pendingFinal && !hasAnyStreamContent && (
                     <TypingIndicator />
                   )}
+                </div>
+              </div>
+
+              {/* Drag handle + Artifact preview panel */}
+              {panelOpen && artifacts.length > 0 && (
+                <>
+                  <div
+                    onMouseDown={handleResizeStart}
+                    className="group relative w-1 shrink-0 cursor-col-resize bg-black/10 dark:bg-white/10 hover:bg-primary/30 active:bg-primary/50 transition-colors"
+                  >
+                    {isDragging && (
+                      <div className="fixed inset-0 z-[9999] cursor-col-resize" />
+                    )}
+                    <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center gap-[5px] pointer-events-none">
+                      <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                      <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                      <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
+                    </div>
+                  </div>
+                  <div
+                    style={{ width: `${panelWidth}%` }}
+                    className="shrink-0 min-w-[240px] overflow-hidden"
+                  >
+                    <PreviewPanel
+                      artifacts={artifacts}
+                      activeIndex={activeArtifactIndex}
+                      onNavigate={(idx) => setActiveArtifactId(artifacts[idx]?.id ?? null)}
+                      onClose={() => {
+                        setPanelOpen(false);
+                        setManualArtifacts([]);
+                      }}
+                    />
+                  </div>
                 </>
               )}
             </div>
           </div>
 
-          {/* Drag handle + Artifact preview panel */}
-          {panelOpen && artifacts.length > 0 && (
-            <>
-              {/* Resizable divider */}
-              <div
-                onMouseDown={handleResizeStart}
-                className="group relative w-1 shrink-0 cursor-col-resize bg-black/10 dark:bg-white/10 hover:bg-primary/30 active:bg-primary/50 transition-colors"
-              >
-                {/* Drag-active overlay — covers the entire viewport (incl. iframe) so
-                    mouse events are never swallowed by child iframes during resize */}
-                {isDragging && (
-                  <div className="fixed inset-0 z-[9999] cursor-col-resize" />
-                )}
-                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center gap-[5px] pointer-events-none">
-                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
-                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
-                  <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground/40 group-hover:bg-primary/60 transition-colors" />
-                </div>
+          {/* Error bar */}
+          {error && (
+            <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
+              <div className="max-w-4xl mx-auto flex items-center justify-between">
+                <p className="text-sm text-destructive flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {error}
+                </p>
+                <button
+                  onClick={clearError}
+                  className="text-xs text-destructive/60 hover:text-destructive underline"
+                >
+                  {t('common:actions.dismiss')}
+                </button>
               </div>
-
-              {/* Panel wrapper — width controlled by drag */}
-              <div
-                style={{ width: `${panelWidth}%` }}
-                className="shrink-0 min-w-[240px] overflow-hidden"
-              >
-                <PreviewPanel
-                  artifacts={artifacts}
-                  activeIndex={activeArtifactIndex}
-                  onNavigate={setActiveArtifactIndex}
-                  onClose={() => setPanelOpen(false)}
-                />
-              </div>
-            </>
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Error bar */}
-      {error && (
-        <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <p className="text-sm text-destructive flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              {error}
-            </p>
-            <button
-              onClick={clearError}
-              className="text-xs text-destructive/60 hover:text-destructive underline"
-            >
-              {t('common:actions.dismiss')}
-            </button>
-          </div>
-        </div>
+          {/* Input */}
+          <ChatInput
+            onSend={handleSend}
+            onStop={abortRun}
+            disabled={!isGatewayRunning}
+            sending={sending}
+            isEmpty={isEmpty}
+          />
+        </>
       )}
-
-      {/* Input Area */}
-      <ChatInput
-        onSend={sendMessage}
-        onStop={abortRun}
-        disabled={!isGatewayRunning}
-        sending={sending}
-        isEmpty={isEmpty}
-      />
 
       {/* Transparent loading overlay */}
       {minLoading && !sending && (
@@ -584,32 +697,22 @@ export function Chat() {
   );
 }
 
-// ── Welcome Screen ──────────────────────────────────────────────
+// ── Welcome Pills (below input in empty state) ──────────────────
 
-function WelcomeScreen() {
-  const { t } = useTranslation('chat');
-  const quickActions = [
-    { key: 'askQuestions', label: t('welcome.askQuestions') },
-    { key: 'creativeTasks', label: t('welcome.creativeTasks') },
-    { key: 'brainstorming', label: t('welcome.brainstorming') },
-  ];
-
+function WelcomePills({ prompts, onSend }: { prompts: string[]; onSend: (text: string) => void }) {
+  if (!prompts.length) return null;
   return (
-    <div className="flex flex-col items-center justify-center text-center h-[60vh]">
-      <h1 className="text-2xl md:text-3xl font-serif text-foreground/80 mb-8 font-normal tracking-tight">
-        {t('welcome.subtitle')}
-      </h1>
-
-      <div className="flex flex-wrap items-center justify-center gap-2.5 max-w-lg w-full">
-        {quickActions.map(({ key, label }) => (
-          <button 
-            key={key}
-            className="px-4 py-1.5 rounded-full border border-black/10 dark:border-white/10 text-[13px] font-medium text-foreground/70 hover:bg-black/5 dark:hover:bg-white/5 transition-colors bg-black/[0.02]"
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+    <div className="w-full max-w-3xl mx-auto px-4 pb-2 flex flex-wrap justify-center gap-2.5">
+      {prompts.map((label) => (
+        <button
+          key={label}
+          type="button"
+          onClick={() => onSend(label)}
+          className="rounded-full border border-stone-300/70 bg-stone-100/80 px-4 py-2 text-sm text-stone-600 transition-all hover:border-stone-400/70 hover:bg-stone-200/60 hover:text-stone-800 dark:border-stone-700/50 dark:bg-stone-800/40 dark:text-stone-400 dark:hover:bg-stone-700/50 dark:hover:text-stone-200"
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

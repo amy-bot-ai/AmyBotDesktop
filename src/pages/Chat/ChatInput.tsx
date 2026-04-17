@@ -38,6 +38,7 @@ interface ChatInputProps {
   disabled?: boolean;
   sending?: boolean;
   isEmpty?: boolean;
+  quickPrompts?: string[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ function readFileAsBase64(file: globalThis.File): Promise<string> {
 
 // ── Component ────────────────────────────────────────────────────
 
-export function ChatInput({ onSend, onStop, disabled = false, sending = false, isEmpty = false }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, disabled = false, sending = false, isEmpty = false, quickPrompts }: ChatInputProps) {
   const { t } = useTranslation('chat');
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -116,6 +117,35 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
     [agents, targetAgentId],
   );
   const showAgentPicker = mentionableAgents.length > 0;
+
+  // ── Rotating placeholder (empty state only) ────────────────────
+  const [isFocused, setIsFocused] = useState(false);
+  const [rotatingIdx, setRotatingIdx] = useState(0);
+  const [rotatingFading, setRotatingFading] = useState(false);
+  const rotatingActiveRef = useRef(false);
+
+  const showRotatingPlaceholder = useMemo(
+    () => isEmpty && !isFocused && input === '' && !disabled && !!quickPrompts?.length,
+    [isEmpty, isFocused, input, disabled, quickPrompts],
+  );
+
+  useEffect(() => {
+    rotatingActiveRef.current = showRotatingPlaceholder;
+  }, [showRotatingPlaceholder]);
+
+  useEffect(() => {
+    if (!quickPrompts?.length) return;
+    const interval = setInterval(() => {
+      if (!rotatingActiveRef.current) return;
+      setRotatingFading(true);
+      const timer = setTimeout(() => {
+        setRotatingIdx((prev) => (prev + 1) % quickPrompts.length);
+        setRotatingFading(false);
+      }, 350);
+      return () => clearTimeout(timer);
+    }, 3200);
+    return () => clearInterval(interval);
+  }, [quickPrompts]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -587,6 +617,28 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
 
             {/* Textarea */}
             <div className="flex-1 relative">
+              {/* Rotating animated placeholder — only in empty state */}
+              {showRotatingPlaceholder && quickPrompts && (
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    inset: '0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    paddingLeft: '8px',
+                    paddingRight: '8px',
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                    opacity: rotatingFading ? 0 : 1,
+                    transform: rotatingFading ? 'translateY(-6px)' : 'translateY(0)',
+                    transition: 'opacity 0.3s ease, transform 0.3s ease',
+                  }}
+                  className="text-[15px] text-muted-foreground/60 truncate"
+                >
+                  {quickPrompts[rotatingIdx % quickPrompts.length]}
+                </span>
+              )}
               <Textarea
                 ref={textareaRef}
                 value={input}
@@ -608,6 +660,8 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
                   }
                 }}
                 onKeyDown={handleKeyDown}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
                 onCompositionStart={() => {
                   isComposingRef.current = true;
                 }}
@@ -615,7 +669,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
                   isComposingRef.current = false;
                 }}
                 onPaste={handlePaste}
-                placeholder={disabled ? t('composer.gatewayDisconnectedPlaceholder') : ''}
+                placeholder={showRotatingPlaceholder ? '' : disabled ? t('composer.gatewayDisconnectedPlaceholder') : ''}
                 disabled={disabled}
                 className="min-h-[40px] max-h-[200px] resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none bg-transparent py-2.5 px-2 text-[15px] placeholder:text-muted-foreground/60 leading-relaxed"
                 rows={1}
