@@ -7,7 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { AgentFilesTab } from './AgentFilesTab';
 import { useAgentsStore } from '@/stores/agents';
 import { useGatewayStore } from '@/stores/gateway';
 import { useProviderStore } from '@/stores/providers';
@@ -178,66 +180,82 @@ export function Agents() {
   return (
     <div data-testid="agents-page" className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
       <div className="w-full max-w-5xl mx-auto flex flex-col h-full p-10 pt-16">
-        <div className="flex flex-col md:flex-row md:items-start justify-between mb-12 shrink-0 gap-4">
+        <div className="flex flex-col md:flex-row md:items-start justify-between mb-8 shrink-0 gap-4">
           <div>
             <h1
               className="text-5xl md:text-6xl font-serif text-foreground mb-3 font-normal tracking-tight"
-             
+
             >
               {t('title')}
             </h1>
             <p className="text-[17px] text-foreground/70 font-medium">{t('subtitle')}</p>
           </div>
-          <div className="flex items-center gap-3 md:mt-2">
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5 mr-2', isUsingStableValue && 'animate-spin')} />
-              {t('refresh')}
-            </Button>
-            <Button
-              onClick={() => setShowAddDialog(true)}
-              className="h-9 text-[13px] font-medium rounded-full px-4 shadow-none"
-            >
-              <Plus className="h-3.5 w-3.5 mr-2" />
-              {t('addAgent')}
-            </Button>
-          </div>
+          <div className="flex items-center gap-3 md:mt-2" id="agents-header-actions" />
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-2 pb-10 min-h-0 -mr-2">
-          {gatewayStatus.state !== 'running' && (
-            <div className="mb-8 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-              <span className="text-yellow-700 dark:text-yellow-400 text-sm font-medium">
-                {t('gatewayWarning')}
-              </span>
-            </div>
-          )}
+        <Tabs defaultValue="overview" className="flex flex-col flex-1 min-h-0">
+          <TabsList className="w-fit mb-6 shrink-0 bg-black/5 dark:bg-white/5 rounded-lg p-0.5 h-auto gap-0">
+            <TabsTrigger value="overview" className="rounded-md px-4 py-1.5 text-[12px] font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground">Overview</TabsTrigger>
+            <TabsTrigger value="files" className="rounded-md px-4 py-1.5 text-[12px] font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground">Files</TabsTrigger>
+          </TabsList>
 
-          {error && (
-            <div className="mb-8 p-4 rounded-xl border border-destructive/50 bg-destructive/10 flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-destructive" />
-              <span className="text-destructive text-sm font-medium">
-                {error}
-              </span>
+          <TabsContent value="overview" className="flex-1 min-h-0 mt-0">
+            {/* Overview header actions */}
+            <div className="flex justify-end gap-3 mb-6">
+              <Button
+                variant="outline"
+                onClick={handleRefresh}
+                className="h-9 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground transition-colors"
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5 mr-2', isUsingStableValue && 'animate-spin')} />
+                {t('refresh')}
+              </Button>
+              <Button
+                onClick={() => setShowAddDialog(true)}
+                className="h-9 text-[13px] font-medium rounded-full px-4 shadow-none"
+              >
+                <Plus className="h-3.5 w-3.5 mr-2" />
+                {t('addAgent')}
+              </Button>
             </div>
-          )}
 
-          <div className="space-y-3">
-            {visibleAgents.map((agent) => (
-              <AgentCard
-                key={agent.id}
-                agent={agent}
-                channelGroups={visibleChannelGroups}
-                onOpenSettings={() => setActiveAgentId(agent.id)}
-                onDelete={() => setAgentToDelete(agent)}
-              />
-            ))}
-          </div>
-        </div>
+            <div className="overflow-y-auto pr-2 pb-10 -mr-2" style={{ maxHeight: 'calc(100vh - 20rem)' }}>
+              {gatewayStatus.state !== 'running' && (
+                <div className="mb-8 p-4 rounded-xl border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                  <span className="text-yellow-700 dark:text-yellow-400 text-sm font-medium">
+                    {t('gatewayWarning')}
+                  </span>
+                </div>
+              )}
+
+              {error && (
+                <div className="mb-8 p-4 rounded-xl border border-destructive/50 bg-destructive/10 flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-destructive" />
+                  <span className="text-destructive text-sm font-medium">
+                    {error}
+                  </span>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {visibleAgents.map((agent) => (
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    channelGroups={visibleChannelGroups}
+                    onOpenSettings={() => setActiveAgentId(agent.id)}
+                    onDelete={() => setAgentToDelete(agent)}
+                  />
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="files" className="flex-1 min-h-0 mt-0 overflow-y-auto pr-2 pb-10 -mr-2">
+            <AgentFilesTab />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {showAddDialog && (
