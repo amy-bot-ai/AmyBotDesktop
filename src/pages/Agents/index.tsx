@@ -7,7 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { AgentFilesTab } from './AgentFilesTab';
 import { useAgentsStore } from '@/stores/agents';
 import { useGatewayStore } from '@/stores/gateway';
 import { useProviderStore } from '@/stores/providers';
@@ -702,7 +704,15 @@ function AgentSettingsModal({
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6 pt-4 overflow-y-auto flex-1 p-6">
+        <CardContent className="flex flex-col flex-1 min-h-0 p-0">
+          <Tabs defaultValue="settings" className="flex flex-col flex-1 min-h-0">
+            <TabsList className="shrink-0 mx-6 mt-2 mb-0 w-fit bg-black/5 dark:bg-white/5 rounded-lg p-0.5 h-auto gap-0">
+              <TabsTrigger value="settings" className="rounded-md px-4 py-1.5 text-[12px] font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground">Settings</TabsTrigger>
+              <TabsTrigger value="files" className="rounded-md px-4 py-1.5 text-[12px] font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground">Files</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="settings" className="flex-1 overflow-y-auto mt-0">
+              <div className="space-y-6 p-6 pt-4">
           {/* ── Identity (merged with Name) ───────────────────── */}
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -991,7 +1001,14 @@ function AgentSettingsModal({
                 Configure
               </Button>
             </div>
-          </div>
+          </div>{/* end Web Widget space-y-3 */}
+              </div>{/* end space-y-6 */}
+            </TabsContent>
+
+            <TabsContent value="files" className="flex-1 overflow-y-auto mt-0 p-6 pt-4">
+              <AgentFilesTab agentId={agent.id} workspace={agent.workspace} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
       {showModelModal && (
