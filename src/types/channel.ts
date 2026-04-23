@@ -10,6 +10,7 @@
  */
 export type ChannelType =
   | 'whatsapp'
+  | 'openzalo'
   // | 'wechat'
   // | 'dingtalk'
   | 'telegram'
@@ -85,6 +86,7 @@ export interface ChannelMeta {
  */
 export const CHANNEL_ICONS: Record<ChannelType, string> = {
   whatsapp: '📱',
+  openzalo: '💙',
   // wechat: '💬',
   // dingtalk: '💬',
   telegram: '✈️',
@@ -106,6 +108,7 @@ export const CHANNEL_ICONS: Record<ChannelType, string> = {
  */
 export const CHANNEL_NAMES: Record<ChannelType, string> = {
   whatsapp: 'WhatsApp',
+  openzalo: 'OpenZalo',
   // wechat: 'WeChat',
   // dingtalk: 'DingTalk',
   telegram: 'Telegram',
@@ -126,6 +129,21 @@ export const CHANNEL_NAMES: Record<ChannelType, string> = {
  * Channel metadata with configuration information
  */
 export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
+  openzalo: {
+    id: 'openzalo',
+    name: 'OpenZalo',
+    icon: '💙',
+    description: 'channels:meta.openzalo.description',
+    connectionType: 'qr',
+    docsUrl: 'channels:meta.openzalo.docsUrl',
+    configFields: [],
+    instructions: [
+      'channels:meta.openzalo.instructions.0',
+      'channels:meta.openzalo.instructions.1',
+      'channels:meta.openzalo.instructions.2',
+      'channels:meta.openzalo.instructions.3',
+    ],
+  },
   // qqbot: {
   //   id: 'qqbot',
   //   name: 'QQ Bot',
@@ -581,7 +599,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
  * Get primary supported channels (non-plugin, commonly used)
  */
 export function getPrimaryChannels(): ChannelType[] {
-  return ['telegram', 'discord', 'whatsapp'];
+  return ['telegram', 'discord', 'whatsapp', 'openzalo'];
 }
 
 /**

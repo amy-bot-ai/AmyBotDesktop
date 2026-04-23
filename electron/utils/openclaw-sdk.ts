@@ -197,3 +197,27 @@ export const {
 } = _slackSdk;
 
 export const { normalizeWhatsAppMessagingTarget } = _whatsappSdk;
+
+// ---------------------------------------------------------------------------
+// Zalo (openzalo / zalouser) SDK
+// ---------------------------------------------------------------------------
+
+interface ZaloSdk {
+  startZaloQrLogin: (params: { profile?: string | null; force?: boolean; timeoutMs?: number }) => Promise<{ qrDataUrl?: string; message: string }>;
+  waitForZaloQrLogin: (params: { profile?: string | null; timeoutMs?: number }) => Promise<{ connected: boolean; message: string }>;
+}
+
+const noopZaloQrLogin = async (..._args: unknown[]): Promise<{ qrDataUrl?: string; message: string }> => ({ message: 'Zalo SDK not available' });
+const noopZaloWaitLogin = async (..._args: unknown[]): Promise<{ connected: boolean; message: string }> => ({ connected: false, message: 'Zalo SDK not available' });
+
+const _zaloSdk = loadChannelSdk<ZaloSdk>(
+  'openclaw/plugin-sdk/zalo',
+  './dist/extensions/zalouser/test-api.js',
+  {
+    startZaloQrLogin: noopZaloQrLogin,
+    waitForZaloQrLogin: noopZaloWaitLogin,
+  },
+  ['startZaloQrLogin', 'waitForZaloQrLogin'],
+);
+
+export const { startZaloQrLogin, waitForZaloQrLogin } = _zaloSdk;

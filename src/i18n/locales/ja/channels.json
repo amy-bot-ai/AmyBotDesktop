@@ -386,6 +386,16 @@
                 "認証情報を入力します"
             ],
             "docsUrl": "https://icnnp7d0dymg.feishu.cn/wiki/KPIJwlyiGiupMrkiS9ice39Zn2c"
+        },
+        "openzalo": {
+            "description": "Connect your Zalo account by scanning a QR code",
+            "docsUrl": "https://docs.openclaw.ai/channels/openzalo",
+            "instructions": [
+                "Open this screen to generate a Zalo QR code",
+                "Open Zalo on your phone",
+                "Scan the QR code shown below",
+                "Your Zalo account will be linked automatically"
+            ]
         }
     },
     "viewDocs": "ドキュメントを表示"

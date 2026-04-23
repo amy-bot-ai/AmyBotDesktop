@@ -7,14 +7,23 @@ const TRAILING_DASH_RE = /-+$/;
 export const UI_WECHAT_CHANNEL_TYPE = 'wechat';
 export const OPENCLAW_WECHAT_CHANNEL_TYPE = 'openclaw-weixin';
 
+// Zalo: UI uses 'openzalo', openclaw gateway/config uses 'zalouser'
+export const UI_ZALO_CHANNEL_TYPE = 'openzalo';
+export const OPENCLAW_ZALO_CHANNEL_TYPE = 'zalouser';
+
 export type QrChannelEvent = 'qr' | 'success' | 'error';
 
 export function toOpenClawChannelType(channelType: string): string {
-  return channelType === UI_WECHAT_CHANNEL_TYPE ? OPENCLAW_WECHAT_CHANNEL_TYPE : channelType;
+  if (channelType === UI_WECHAT_CHANNEL_TYPE) return OPENCLAW_WECHAT_CHANNEL_TYPE;
+  // openzalo stays as openzalo in the config — gateway creates zalouser internally
+  return channelType;
 }
 
 export function toUiChannelType(channelType: string): string {
-  return channelType === OPENCLAW_WECHAT_CHANNEL_TYPE ? UI_WECHAT_CHANNEL_TYPE : channelType;
+  if (channelType === OPENCLAW_WECHAT_CHANNEL_TYPE) return UI_WECHAT_CHANNEL_TYPE;
+  // Gateway reports zalouser internally — map back to openzalo for UI
+  if (channelType === OPENCLAW_ZALO_CHANNEL_TYPE) return UI_ZALO_CHANNEL_TYPE;
+  return channelType;
 }
 
 export function isWechatChannelType(channelType: string | null | undefined): boolean {

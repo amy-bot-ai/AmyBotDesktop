@@ -197,7 +197,12 @@ export function ChannelConfigModal({
       : CHANNEL_NAMES[channelType];
     const existingChannel = channels.find((channel) => channel.type === channelType);
 
-    if (!existingChannel) {
+    // QR channels save their own config during the login flow — calling addChannel
+    // would trigger a second gateway RPC (channels.add) that creates a duplicate
+    // account entry with a generated ID. Just refresh instead.
+    const isQrChannel = meta?.connectionType === 'qr';
+
+    if (!existingChannel && !isQrChannel) {
       await addChannel({
         type: channelType,
         name: displayName,
@@ -208,7 +213,7 @@ export function ChannelConfigModal({
     }
 
     await onChannelSaved?.(channelType);
-  }, [addChannel, channelName, channels, configValues, fetchChannels, meta?.configFields, onChannelSaved, showChannelName]);
+  }, [addChannel, channelName, channels, configValues, fetchChannels, meta?.configFields, meta?.connectionType, onChannelSaved, showChannelName]);
 
   const finishSaveRef = useRef(finishSave);
   const onCloseRef = useRef(onClose);
@@ -817,6 +822,8 @@ function ChannelLogo({ type }: { type: ChannelType }) {
       return <img src={discordIcon} alt="Discord" className="w-[22px] h-[22px] dark:invert" />;
     case 'whatsapp':
       return <img src={whatsappIcon} alt="WhatsApp" className="w-[22px] h-[22px] dark:invert" />;
+    case 'openzalo':
+      return <span className="text-[#0068FF] font-black text-[20px] leading-none select-none">Z</span>;
     // case 'wechat':
     //   return <img src={wechatIcon} alt="WeChat" className="w-[22px] h-[22px] dark:invert" />;
     // case 'dingtalk':
