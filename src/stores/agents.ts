@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { hostApiFetch } from '@/lib/host-api';
 import type { ChannelType } from '@/types/channel';
-import type { AgentSummary, AgentsSnapshot } from '@/types/agent';
+import type { AgentIdentity, AgentSummary, AgentsSnapshot } from '@/types/agent';
 
 interface AgentsState {
   agents: AgentSummary[];
@@ -15,7 +15,12 @@ interface AgentsState {
   fetchAgents: () => Promise<void>;
   createAgent: (name: string, options?: { inheritWorkspace?: boolean }) => Promise<void>;
   updateAgent: (agentId: string, name: string) => Promise<void>;
-  updateAgentModel: (agentId: string, modelRef: string | null) => Promise<void>;
+  updateAgentModel: (agentId: string, modelRef: string | null, fallbacks?: string[]) => Promise<void>;
+  updateAgentSkills: (agentId: string, skills: string[]) => Promise<void>;
+  updateAgentIdentity: (agentId: string, patch: Partial<AgentIdentity>) => Promise<void>;
+  setAgentDefault: (agentId: string) => Promise<void>;
+  updateAgentSubagents: (agentId: string, subagents: string[]) => Promise<void>;
+  moveAgent: (agentId: string, direction: 'up' | 'down') => Promise<void>;
   deleteAgent: (agentId: string) => Promise<void>;
   assignChannel: (agentId: string, channelType: ChannelType) => Promise<void>;
   removeChannel: (agentId: string, channelType: ChannelType) => Promise<void>;
@@ -87,15 +92,88 @@ export const useAgentsStore = create<AgentsState>((set) => ({
     }
   },
 
-  updateAgentModel: async (agentId: string, modelRef: string | null) => {
+  updateAgentModel: async (agentId: string, modelRef: string | null, fallbacks?: string[]) => {
     set({ error: null });
     try {
       const snapshot = await hostApiFetch<AgentsSnapshot & { success?: boolean }>(
         `/api/agents/${encodeURIComponent(agentId)}/model`,
         {
           method: 'PUT',
-          body: JSON.stringify({ modelRef }),
+          body: JSON.stringify({ modelRef, fallbacks }),
         }
+      );
+      set(applySnapshot(snapshot));
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
+    }
+  },
+
+  updateAgentSkills: async (agentId: string, skills: string[]) => {
+    set({ error: null });
+    try {
+      const snapshot = await hostApiFetch<AgentsSnapshot & { success?: boolean }>(
+        `/api/agents/${encodeURIComponent(agentId)}/skills`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ skills }),
+        }
+      );
+      set(applySnapshot(snapshot));
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
+    }
+  },
+
+  updateAgentIdentity: async (agentId: string, patch: Partial<AgentIdentity>) => {
+    set({ error: null });
+    try {
+      const snapshot = await hostApiFetch<AgentsSnapshot & { success?: boolean }>(
+        `/api/agents/${encodeURIComponent(agentId)}/identity`,
+        { method: 'PUT', body: JSON.stringify(patch) },
+      );
+      set(applySnapshot(snapshot));
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
+    }
+  },
+
+  setAgentDefault: async (agentId: string) => {
+    set({ error: null });
+    try {
+      const snapshot = await hostApiFetch<AgentsSnapshot & { success?: boolean }>(
+        `/api/agents/${encodeURIComponent(agentId)}/default`,
+        { method: 'PUT', body: JSON.stringify({}) },
+      );
+      set(applySnapshot(snapshot));
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
+    }
+  },
+
+  updateAgentSubagents: async (agentId: string, subagents: string[]) => {
+    set({ error: null });
+    try {
+      const snapshot = await hostApiFetch<AgentsSnapshot & { success?: boolean }>(
+        `/api/agents/${encodeURIComponent(agentId)}/subagents`,
+        { method: 'PUT', body: JSON.stringify({ subagents }) },
+      );
+      set(applySnapshot(snapshot));
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
+    }
+  },
+
+  moveAgent: async (agentId: string, direction: 'up' | 'down') => {
+    set({ error: null });
+    try {
+      const snapshot = await hostApiFetch<AgentsSnapshot & { success?: boolean }>(
+        `/api/agents/${encodeURIComponent(agentId)}/move`,
+        { method: 'PUT', body: JSON.stringify({ direction }) },
       );
       set(applySnapshot(snapshot));
     } catch (error) {

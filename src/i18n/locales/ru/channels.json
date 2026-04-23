@@ -386,6 +386,16 @@
                 "Получите App ID и Client Secret",
                 "Заполните ваши учётные данные ниже"
             ]
+        },
+        "openzalo": {
+            "description": "Connect your Zalo account by scanning a QR code",
+            "docsUrl": "https://docs.openclaw.ai/channels/openzalo",
+            "instructions": [
+                "Open this screen to generate a Zalo QR code",
+                "Open Zalo on your phone",
+                "Scan the QR code shown below",
+                "Your Zalo account will be linked automatically"
+            ]
         }
     },
     "viewDocs": "Просмотреть документацию"

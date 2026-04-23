@@ -28,12 +28,26 @@ const AGENT_RUNTIME_FILES = [
 
 interface AgentModelConfig {
   primary?: string;
+  fallbacks?: string[];
   [key: string]: unknown;
 }
 
 interface AgentDefaultsConfig {
   workspace?: string;
   model?: string | AgentModelConfig;
+  [key: string]: unknown;
+}
+
+interface AgentIdentityConfig {
+  name?: string;
+  emoji?: string;
+  theme?: string;
+  avatar?: string;
+  [key: string]: unknown;
+}
+
+interface AgentSubagentsConfig {
+  allowAgents?: string[];
   [key: string]: unknown;
 }
 
@@ -44,6 +58,9 @@ interface AgentListEntry extends Record<string, unknown> {
   workspace?: string;
   agentDir?: string;
   model?: string | AgentModelConfig;
+  skills?: string[];
+  identity?: AgentIdentityConfig;
+  subagents?: AgentSubagentsConfig;
 }
 
 interface AgentsConfig extends Record<string, unknown> {
@@ -77,6 +94,13 @@ interface AgentConfigDocument extends Record<string, unknown> {
   };
 }
 
+export interface AgentIdentity {
+  name: string;
+  emoji: string;
+  theme: string;
+  avatar: string;
+}
+
 export interface AgentSummary {
   id: string;
   name: string;
@@ -84,11 +108,15 @@ export interface AgentSummary {
   modelDisplay: string;
   modelRef: string | null;
   overrideModelRef: string | null;
+  fallbackModels: string[];
   inheritedModel: boolean;
   workspace: string;
   agentDir: string;
   mainSessionKey: string;
   channelTypes: string[];
+  skills: string[];
+  identity: AgentIdentity;
+  subagents: string[];
 }
 
 export interface AgentsSnapshot {
@@ -98,6 +126,28 @@ export interface AgentsSnapshot {
   configuredChannelTypes: string[];
   channelOwners: Record<string, string>;
   channelAccountOwners: Record<string, string>;
+}
+
+/**
+ * Clean a raw identity string value — strips markdown bold markers (**) and
+ * template hint patterns _(...)_ that IDENTITY.md templates leave behind.
+ */
+function cleanIdentityValue(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/\*\*/g, '')           // remove ** bold markers
+    .replace(/\s*_\(.*?\)_?\s*/g, '') // remove _(hint text)_ patterns
+    .trim();
+}
+
+function resolveFallbackModels(model: unknown): string[] {
+  if (model && typeof model === 'object') {
+    const fallbacks = (model as AgentModelConfig).fallbacks;
+    if (Array.isArray(fallbacks)) {
+      return fallbacks.filter((f): f is string => typeof f === 'string' && f.trim().length > 0).map((f) => f.trim());
+    }
+  }
+  return [];
 }
 
 function resolveModelRef(model: unknown): string | null {
@@ -508,13 +558,16 @@ async function buildSnapshotFromConfig(config: AgentConfigDocument, preloadedCha
     const inheritedModel = !explicitModelRef && Boolean(defaultModelLabel);
     const entryIdNorm = normalizeAgentIdForBinding(entry.id);
     const ownedChannels = agentChannelSets.get(entryIdNorm) ?? new Set<string>();
+    const identityCfg = entry.identity && typeof entry.identity === 'object' ? entry.identity : {};
+    const displayName = entry.name || (entry.id === MAIN_AGENT_ID ? MAIN_AGENT_NAME : entry.id);
     return {
       id: entry.id,
-      name: entry.name || (entry.id === MAIN_AGENT_ID ? MAIN_AGENT_NAME : entry.id),
+      name: displayName,
       isDefault: entry.id === defaultAgentId,
       modelDisplay: modelLabel,
       modelRef: explicitModelRef || defaultModelRef || null,
       overrideModelRef: explicitModelRef,
+      fallbackModels: resolveFallbackModels(entry.model),
       inheritedModel,
       workspace: entry.workspace || (entry.id === MAIN_AGENT_ID ? getDefaultWorkspacePath(config) : `~/.openclaw/workspace-${entry.id}`),
       agentDir: entry.agentDir || getDefaultAgentDirPath(entry.id),
@@ -522,6 +575,16 @@ async function buildSnapshotFromConfig(config: AgentConfigDocument, preloadedCha
       channelTypes: configuredChannels
         .filter((ct) => ownedChannels.has(ct))
         .map((channelType) => toUiChannelType(channelType)),
+      skills: Array.isArray(entry.skills) ? entry.skills.filter((s): s is string => typeof s === 'string') : [],
+      identity: {
+        name: cleanIdentityValue(identityCfg.name) || displayName,
+        emoji: cleanIdentityValue(identityCfg.emoji),
+        theme: cleanIdentityValue(identityCfg.theme),
+        avatar: cleanIdentityValue(identityCfg.avatar),
+      },
+      subagents: Array.isArray(entry.subagents?.allowAgents)
+        ? (entry.subagents.allowAgents as unknown[]).filter((s): s is string => typeof s === 'string')
+        : [],
     };
   });
 
@@ -625,7 +688,11 @@ function isValidModelRef(modelRef: string): boolean {
   return firstSlash > 0 && firstSlash < modelRef.length - 1;
 }
 
-export async function updateAgentModel(agentId: string, modelRef: string | null): Promise<AgentsSnapshot> {
+export async function updateAgentModel(
+  agentId: string,
+  modelRef: string | null,
+  fallbacks?: string[],
+): Promise<AgentsSnapshot> {
   return withConfigLock(async () => {
     const config = await readOpenClawConfig() as AgentConfigDocument;
     const { agentsConfig, entries } = normalizeAgentsConfig(config);
@@ -635,6 +702,9 @@ export async function updateAgentModel(agentId: string, modelRef: string | null)
     }
 
     const normalizedModelRef = typeof modelRef === 'string' ? modelRef.trim() : '';
+    const normalizedFallbacks = Array.isArray(fallbacks)
+      ? fallbacks.map((f) => f.trim()).filter((f) => f && isValidModelRef(f))
+      : undefined;
     const nextEntry: AgentListEntry = { ...entries[index] };
 
     if (!normalizedModelRef) {
@@ -643,7 +713,11 @@ export async function updateAgentModel(agentId: string, modelRef: string | null)
       if (!isValidModelRef(normalizedModelRef)) {
         throw new Error('modelRef must be in "provider/model" format');
       }
-      nextEntry.model = { primary: normalizedModelRef };
+      const modelConfig: AgentModelConfig = { primary: normalizedModelRef };
+      if (normalizedFallbacks && normalizedFallbacks.length > 0) {
+        modelConfig.fallbacks = normalizedFallbacks;
+      }
+      nextEntry.model = modelConfig;
     }
 
     entries[index] = nextEntry;
@@ -653,7 +727,35 @@ export async function updateAgentModel(agentId: string, modelRef: string | null)
     };
 
     await writeOpenClawConfig(config);
-    logger.info('Updated agent model', { agentId, modelRef: normalizedModelRef || null });
+    logger.info('Updated agent model', { agentId, modelRef: normalizedModelRef || null, fallbacks: normalizedFallbacks });
+    return buildSnapshotFromConfig(config);
+  });
+}
+
+export async function updateAgentSkills(agentId: string, skills: string[]): Promise<AgentsSnapshot> {
+  return withConfigLock(async () => {
+    const config = await readOpenClawConfig() as AgentConfigDocument;
+    const { agentsConfig, entries } = normalizeAgentsConfig(config);
+    const index = entries.findIndex((entry) => entry.id === agentId);
+    if (index === -1) {
+      throw new Error(`Agent "${agentId}" not found`);
+    }
+
+    const nextEntry: AgentListEntry = { ...entries[index] };
+    if (skills.length === 0) {
+      delete nextEntry.skills;
+    } else {
+      nextEntry.skills = skills.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim());
+    }
+
+    entries[index] = nextEntry;
+    config.agents = {
+      ...agentsConfig,
+      list: entries,
+    };
+
+    await writeOpenClawConfig(config);
+    logger.info('Updated agent skills', { agentId, skills: nextEntry.skills });
     return buildSnapshotFromConfig(config);
   });
 }
@@ -758,6 +860,108 @@ export async function clearChannelBinding(channelType: string, accountId?: strin
     config.bindings = upsertBindingsForChannel(config.bindings, channelType, null, accountId);
     await writeOpenClawConfig(config);
     logger.info('Cleared channel binding', { channelType, accountId });
+    return buildSnapshotFromConfig(config);
+  });
+}
+
+export async function updateAgentIdentity(
+  agentId: string,
+  patch: Partial<AgentIdentity>,
+): Promise<AgentsSnapshot> {
+  return withConfigLock(async () => {
+    const config = await readOpenClawConfig() as AgentConfigDocument;
+    const { agentsConfig, entries } = normalizeAgentsConfig(config);
+    const index = entries.findIndex((entry) => entry.id === agentId);
+    if (index === -1) throw new Error(`Agent "${agentId}" not found`);
+
+    const existing = entries[index];
+    const existingIdentity = existing.identity && typeof existing.identity === 'object' ? existing.identity : {};
+    const nextIdentity: AgentIdentityConfig = { ...existingIdentity };
+
+    if ('name' in patch) nextIdentity.name = patch.name?.trim() || undefined;
+    if ('emoji' in patch) nextIdentity.emoji = patch.emoji?.trim() || undefined;
+    if ('theme' in patch) nextIdentity.theme = patch.theme?.trim() || undefined;
+    if ('avatar' in patch) nextIdentity.avatar = patch.avatar?.trim() || undefined;
+
+    // Clean up undefined keys
+    (Object.keys(nextIdentity) as (keyof AgentIdentityConfig)[]).forEach((k) => {
+      if (nextIdentity[k] === undefined) delete nextIdentity[k];
+    });
+
+    entries[index] = { ...existing, identity: nextIdentity };
+    config.agents = { ...agentsConfig, list: entries };
+    await writeOpenClawConfig(config);
+    logger.info('Updated agent identity', { agentId });
+    return buildSnapshotFromConfig(config);
+  });
+}
+
+export async function setAgentDefault(agentId: string): Promise<AgentsSnapshot> {
+  return withConfigLock(async () => {
+    const config = await readOpenClawConfig() as AgentConfigDocument;
+    const { agentsConfig, entries } = normalizeAgentsConfig(config);
+    const index = entries.findIndex((entry) => entry.id === agentId);
+    if (index === -1) throw new Error(`Agent "${agentId}" not found`);
+
+    // Set default on target, clear from all others
+    const nextEntries = entries.map((entry, i) => {
+      if (i === index) return { ...entry, default: true };
+      const updated = { ...entry };
+      delete updated.default;
+      return updated;
+    });
+
+    config.agents = { ...agentsConfig, list: nextEntries };
+    await writeOpenClawConfig(config);
+    logger.info('Set agent as default', { agentId });
+    return buildSnapshotFromConfig(config);
+  });
+}
+
+export async function updateAgentSubagents(agentId: string, subagentIds: string[]): Promise<AgentsSnapshot> {
+  return withConfigLock(async () => {
+    const config = await readOpenClawConfig() as AgentConfigDocument;
+    const { agentsConfig, entries } = normalizeAgentsConfig(config);
+    const index = entries.findIndex((entry) => entry.id === agentId);
+    if (index === -1) throw new Error(`Agent "${agentId}" not found`);
+
+    const existing = entries[index];
+    const cleaned = subagentIds.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim());
+    const nextEntry: AgentListEntry = { ...existing };
+
+    if (cleaned.length === 0) {
+      nextEntry.subagents = { allowAgents: [] };
+    } else {
+      nextEntry.subagents = {
+        ...(existing.subagents && typeof existing.subagents === 'object' ? existing.subagents : {}),
+        allowAgents: cleaned,
+      };
+    }
+
+    entries[index] = nextEntry;
+    config.agents = { ...agentsConfig, list: entries };
+    await writeOpenClawConfig(config);
+    logger.info('Updated agent subagents', { agentId, subagents: cleaned });
+    return buildSnapshotFromConfig(config);
+  });
+}
+
+export async function moveAgent(agentId: string, direction: 'up' | 'down'): Promise<AgentsSnapshot> {
+  return withConfigLock(async () => {
+    const config = await readOpenClawConfig() as AgentConfigDocument;
+    const { agentsConfig, entries } = normalizeAgentsConfig(config);
+    const index = entries.findIndex((entry) => entry.id === agentId);
+    if (index === -1) throw new Error(`Agent "${agentId}" not found`);
+
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= entries.length) return buildSnapshotFromConfig(config);
+
+    const next = [...entries];
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+
+    config.agents = { ...agentsConfig, list: next };
+    await writeOpenClawConfig(config);
+    logger.info('Moved agent', { agentId, direction });
     return buildSnapshotFromConfig(config);
   });
 }

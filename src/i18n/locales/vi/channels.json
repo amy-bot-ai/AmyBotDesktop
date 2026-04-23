@@ -386,6 +386,16 @@
                 "Lấy App ID và Client Secret",
                 "Điền thông tin xác thực bên dưới"
             ]
+        },
+        "openzalo": {
+            "description": "Kết nối tài khoản Zalo của bạn bằng cách quét mã QR",
+            "docsUrl": "https://docs.openclaw.ai/channels/openzalo",
+            "instructions": [
+                "Mở màn hình này để tạo mã QR Zalo",
+                "Mở Zalo trên điện thoại của bạn",
+                "Quét mã QR hiển thị bên dưới",
+                "Tài khoản Zalo của bạn sẽ được liên kết tự động"
+            ]
         }
     },
     "viewDocs": "Xem tài liệu"

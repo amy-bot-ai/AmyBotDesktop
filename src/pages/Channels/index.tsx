@@ -558,6 +558,8 @@ function ChannelLogo({ type }: { type: ChannelType }) {
       return <img src={discordIcon} alt="Discord" className="w-[22px] h-[22px] dark:invert" />;
     case 'whatsapp':
       return <img src={whatsappIcon} alt="WhatsApp" className="w-[22px] h-[22px] dark:invert" />;
+    case 'openzalo':
+      return <span className="text-[#0068FF] font-black text-[20px] leading-none select-none">Z</span>;
     // case 'wechat':
     //   return <img src={wechatIcon} alt="WeChat" className="w-[22px] h-[22px] dark:invert" />;
     // case 'dingtalk':

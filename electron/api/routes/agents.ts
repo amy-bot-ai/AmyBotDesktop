@@ -5,11 +5,17 @@ import {
   createAgent,
   deleteAgentConfig,
   listAgentsSnapshot,
+  moveAgent,
   removeAgentWorkspaceDirectory,
   resolveAccountIdForAgent,
+  setAgentDefault,
+  updateAgentIdentity,
   updateAgentModel,
   updateAgentName,
+  updateAgentSkills,
+  updateAgentSubagents,
 } from '../../utils/agent-config';
+import type { AgentIdentity } from '../../utils/agent-config';
 import { deleteChannelAccountConfig } from '../../utils/channel-config';
 import { syncAgentModelOverrideToRuntime, syncAllProviderAuthToRuntime } from '../../services/providers/provider-runtime-sync';
 import type { HostApiContext } from '../context';
@@ -154,9 +160,9 @@ export async function handleAgentRoutes(
 
     if (parts.length === 2 && parts[1] === 'model') {
       try {
-        const body = await parseJsonBody<{ modelRef?: string | null }>(req);
+        const body = await parseJsonBody<{ modelRef?: string | null; fallbacks?: string[] }>(req);
         const agentId = decodeURIComponent(parts[0]);
-        const snapshot = await updateAgentModel(agentId, body.modelRef ?? null);
+        const snapshot = await updateAgentModel(agentId, body.modelRef ?? null, body.fallbacks);
         try {
           await syncAllProviderAuthToRuntime();
           // Ensure this agent's runtime model registry reflects the new model override.
@@ -165,6 +171,82 @@ export async function handleAgentRoutes(
           console.warn('[agents] Failed to sync runtime after updating agent model:', syncError);
         }
         scheduleGatewayReload(ctx, 'update-agent-model');
+        sendJson(res, 200, { success: true, ...snapshot });
+      } catch (error) {
+        sendJson(res, 500, { success: false, error: String(error) });
+      }
+      return true;
+    }
+
+    if (parts.length === 2 && parts[1] === 'skills') {
+      try {
+        const body = await parseJsonBody<{ skills: string[] }>(req);
+        const agentId = decodeURIComponent(parts[0]);
+        if (!Array.isArray(body.skills)) {
+          sendJson(res, 400, { success: false, error: 'skills must be an array' });
+          return true;
+        }
+        const snapshot = await updateAgentSkills(agentId, body.skills);
+        scheduleGatewayReload(ctx, 'update-agent-skills');
+        sendJson(res, 200, { success: true, ...snapshot });
+      } catch (error) {
+        sendJson(res, 500, { success: false, error: String(error) });
+      }
+      return true;
+    }
+
+    if (parts.length === 2 && parts[1] === 'move') {
+      try {
+        const body = await parseJsonBody<{ direction: 'up' | 'down' }>(req);
+        const agentId = decodeURIComponent(parts[0]);
+        if (body.direction !== 'up' && body.direction !== 'down') {
+          sendJson(res, 400, { success: false, error: 'direction must be "up" or "down"' });
+          return true;
+        }
+        const snapshot = await moveAgent(agentId, body.direction);
+        scheduleGatewayReload(ctx, 'move-agent');
+        sendJson(res, 200, { success: true, ...snapshot });
+      } catch (error) {
+        sendJson(res, 500, { success: false, error: String(error) });
+      }
+      return true;
+    }
+
+    if (parts.length === 2 && parts[1] === 'identity') {
+      try {
+        const body = await parseJsonBody<Partial<AgentIdentity>>(req);
+        const agentId = decodeURIComponent(parts[0]);
+        const snapshot = await updateAgentIdentity(agentId, body);
+        scheduleGatewayReload(ctx, 'update-agent-identity');
+        sendJson(res, 200, { success: true, ...snapshot });
+      } catch (error) {
+        sendJson(res, 500, { success: false, error: String(error) });
+      }
+      return true;
+    }
+
+    if (parts.length === 2 && parts[1] === 'default') {
+      try {
+        const agentId = decodeURIComponent(parts[0]);
+        const snapshot = await setAgentDefault(agentId);
+        scheduleGatewayReload(ctx, 'set-agent-default');
+        sendJson(res, 200, { success: true, ...snapshot });
+      } catch (error) {
+        sendJson(res, 500, { success: false, error: String(error) });
+      }
+      return true;
+    }
+
+    if (parts.length === 2 && parts[1] === 'subagents') {
+      try {
+        const body = await parseJsonBody<{ subagents: string[] }>(req);
+        const agentId = decodeURIComponent(parts[0]);
+        if (!Array.isArray(body.subagents)) {
+          sendJson(res, 400, { success: false, error: 'subagents must be an array' });
+          return true;
+        }
+        const snapshot = await updateAgentSubagents(agentId, body.subagents);
+        scheduleGatewayReload(ctx, 'update-agent-subagents');
         sendJson(res, 200, { success: true, ...snapshot });
       } catch (error) {
         sendJson(res, 500, { success: false, error: String(error) });

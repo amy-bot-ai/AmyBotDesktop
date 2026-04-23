@@ -18,6 +18,9 @@ const HOST_EVENT_TO_IPC_CHANNEL: Record<string, string> = {
   'channel:wechat-qr': 'channel:wechat-qr',
   'channel:wechat-success': 'channel:wechat-success',
   'channel:wechat-error': 'channel:wechat-error',
+  'channel:openzalo-qr': 'channel:openzalo-qr',
+  'channel:openzalo-success': 'channel:openzalo-success',
+  'channel:openzalo-error': 'channel:openzalo-error',
 };
 
 function getEventSource(): EventSource {
