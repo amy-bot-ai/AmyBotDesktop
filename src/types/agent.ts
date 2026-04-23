@@ -1,3 +1,10 @@
+export interface AgentIdentity {
+  name: string;
+  emoji: string;
+  theme: string;
+  avatar: string;
+}
+
 export interface AgentSummary {
   id: string;
   name: string;
@@ -5,11 +12,15 @@ export interface AgentSummary {
   modelDisplay: string;
   modelRef?: string | null;
   overrideModelRef?: string | null;
+  fallbackModels: string[];
   inheritedModel: boolean;
   workspace: string;
   agentDir: string;
   mainSessionKey: string;
   channelTypes: string[];
+  skills: string[];
+  identity: AgentIdentity;
+  subagents: string[];
 }
 
 export interface AgentsSnapshot {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Bot, Check, Plus, RefreshCw, Settings2, Trash2, X } from 'lucide-react';
+import { AlertCircle, Bot, Check, ChevronDown, ChevronUp, Code, Copy, Globe, GlobeLock, Plus, RefreshCw, Settings2, Trash2, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +16,7 @@ import { subscribeHostEvent } from '@/lib/host-events';
 import { CHANNEL_ICONS, CHANNEL_NAMES, type ChannelType } from '@/types/channel';
 import type { AgentSummary } from '@/types/agent';
 import type { ProviderAccount, ProviderVendorInfo, ProviderWithKeyInfo } from '@/lib/providers';
+import { useSkillsStore } from '@/stores/skills';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -502,38 +503,161 @@ function AgentSettingsModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation('agents');
-  const { updateAgent, defaultModelRef } = useAgentsStore();
+  const { updateAgent, updateAgentSkills, updateAgentIdentity, setAgentDefault, updateAgentSubagents, moveAgent, agents, defaultModelRef } = useAgentsStore();
+  const skills = useSkillsStore((state) => state.skills);
+  const fetchSkills = useSkillsStore((state) => state.fetchSkills);
   const [name, setName] = useState(agent.name);
-  const [savingName, setSavingName] = useState(false);
   const [showModelModal, setShowModelModal] = useState(false);
+  const [showWidgetModal, setShowWidgetModal] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  // 'all' = inherit global (empty array in config), 'custom' = explicit allowlist
+  const [skillsMode, setSkillsMode] = useState<'all' | 'custom'>(agent.skills.length > 0 ? 'custom' : 'all');
+  const [pendingSkills, setPendingSkills] = useState<string[]>(agent.skills);
+  const [savingSkills, setSavingSkills] = useState(false);
+  // Identity
+  const [_identityName, setIdentityName] = useState(agent.identity.name);
+  const [identityEmoji, setIdentityEmoji] = useState(agent.identity.emoji);
+  const [identityTheme, setIdentityTheme] = useState(agent.identity.theme);
+  const [identityAvatar, setIdentityAvatar] = useState(agent.identity.avatar);
+  const [savingIdentity, setSavingIdentity] = useState(false);
+  // Subagents
+  const [pendingSubagents, setPendingSubagents] = useState<string[]>(agent.subagents);
+  const [savingSubagents, setSavingSubagents] = useState(false);
+  const [settingDefault, setSettingDefault] = useState(false);
+  const [movingAgent, setMovingAgent] = useState(false);
+  const otherAgents = agents.filter((a) => a.id !== agent.id);
+  const agentIndex = agents.findIndex((a) => a.id === agent.id);
+  const canMoveUp = agentIndex > 0;
+  const canMoveDown = agentIndex < agents.length - 1;
+
+  useEffect(() => {
+    void fetchSkills();
+  }, [fetchSkills]);
+
+  useEffect(() => {
+    setPendingSkills(agent.skills);
+    setSkillsMode(agent.skills.length > 0 ? 'custom' : 'all');
+  }, [agent.skills]);
 
   useEffect(() => {
     setName(agent.name);
   }, [agent.name]);
 
-  const hasNameChanges = name.trim() !== agent.name;
+  useEffect(() => {
+    setIdentityName(agent.identity.name);
+    setIdentityEmoji(agent.identity.emoji);
+    setIdentityTheme(agent.identity.theme);
+    setIdentityAvatar(agent.identity.avatar);
+  }, [agent.identity]);
+
+  useEffect(() => {
+    setPendingSubagents(agent.subagents);
+  }, [agent.subagents]);
+
+  // Name + all identity fields treated as one block
+  const identityChanged =
+    name.trim() !== agent.name ||
+    identityEmoji.trim() !== agent.identity.emoji ||
+    identityTheme.trim() !== agent.identity.theme ||
+    identityAvatar.trim() !== agent.identity.avatar;
+
+  const subagentsChanged =
+    JSON.stringify([...pendingSubagents].sort()) !== JSON.stringify([...agent.subagents].sort());
+
+  const handleSaveIdentity = async () => {
+    if (!identityChanged) return;
+    setSavingIdentity(true);
+    try {
+      const saves: Promise<unknown>[] = [];
+      if (name.trim() && name.trim() !== agent.name) {
+        saves.push(updateAgent(agent.id, name.trim()));
+      }
+      saves.push(updateAgentIdentity(agent.id, {
+        name: name.trim(),
+        emoji: identityEmoji.trim(),
+        theme: identityTheme.trim(),
+        avatar: identityAvatar.trim(),
+      }));
+      await Promise.all(saves);
+      toast.success('Agent updated');
+    } catch (error) {
+      toast.error(`Failed to update: ${String(error)}`);
+    } finally {
+      setSavingIdentity(false);
+    }
+  };
+
+  const handleSetDefault = async () => {
+    if (agent.isDefault || settingDefault) return;
+    setSettingDefault(true);
+    try {
+      await setAgentDefault(agent.id);
+      toast.success('Agent set as default');
+    } catch (error) {
+      toast.error(`Failed to set default: ${String(error)}`);
+    } finally {
+      setSettingDefault(false);
+    }
+  };
+
+  const handleSaveSubagents = async () => {
+    if (!subagentsChanged) return;
+    setSavingSubagents(true);
+    try {
+      await updateAgentSubagents(agent.id, pendingSubagents);
+      toast.success('Subagents updated');
+    } catch (error) {
+      toast.error(`Failed to update subagents: ${String(error)}`);
+    } finally {
+      setSavingSubagents(false);
+    }
+  };
+
+  const toggleSubagent = (agentId: string) => {
+    setPendingSubagents((prev) =>
+      prev.includes(agentId) ? prev.filter((id) => id !== agentId) : [...prev, agentId],
+    );
+  };
 
   const handleRequestClose = () => {
-    if (savingName || hasNameChanges) {
+    if (savingIdentity || identityChanged) {
       setShowCloseConfirm(true);
       return;
     }
     onClose();
   };
 
-  const handleSaveName = async () => {
-    if (!name.trim() || name.trim() === agent.name) return;
-    setSavingName(true);
+  const handleMove = async (direction: 'up' | 'down') => {
+    if (movingAgent) return;
+    setMovingAgent(true);
     try {
-      await updateAgent(agent.id, name.trim());
-      toast.success(t('toast.agentUpdated'));
+      await moveAgent(agent.id, direction);
     } catch (error) {
-      toast.error(t('toast.agentUpdateFailed', { error: String(error) }));
+      toast.error(`Failed to move agent: ${String(error)}`);
     } finally {
-      setSavingName(false);
+      setMovingAgent(false);
     }
   };
+
+  const handleSaveSkills = async () => {
+    setSavingSkills(true);
+    try {
+      await updateAgentSkills(agent.id, pendingSkills);
+      toast.success('Skills updated');
+    } catch (error) {
+      toast.error(`Failed to update skills: ${String(error)}`);
+    } finally {
+      setSavingSkills(false);
+    }
+  };
+
+  const toggleSkill = (skillKey: string) => {
+    setPendingSkills((prev) =>
+      prev.includes(skillKey) ? prev.filter((s) => s !== skillKey) : [...prev, skillKey],
+    );
+  };
+
+  const skillsChanged = JSON.stringify([...pendingSkills].sort()) !== JSON.stringify([...agent.skills].sort());
 
   const assignedChannels = channelGroups.flatMap((group) =>
     group.accounts
@@ -561,68 +685,98 @@ function AgentSettingsModal({
               {t('settingsDialog.description')}
             </CardDescription>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRequestClose}
-            className="rounded-full h-8 w-8 -mr-2 -mt-2 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1 -mr-2 -mt-2">
+            <Button variant="ghost" size="icon" onClick={() => void handleMove('up')}
+              disabled={movingAgent || !canMoveUp}
+              className="rounded-full h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5">
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => void handleMove('down')}
+              disabled={movingAgent || !canMoveDown}
+              className="rounded-full h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5">
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleRequestClose}
+              className="rounded-full h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6 pt-4 overflow-y-auto flex-1 p-6">
-          <div className="space-y-4">
-            <div className="space-y-2.5">
-              <Label htmlFor="agent-settings-name" className={labelClasses}>{t('settingsDialog.nameLabel')}</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="agent-settings-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  readOnly={agent.isDefault}
-                  className={inputClasses}
-                />
-                {!agent.isDefault && (
-                  <Button
-                    variant="outline"
-                    onClick={() => void handleSaveName()}
-                    disabled={savingName || !name.trim() || name.trim() === agent.name}
-                    className="h-[44px] text-[13px] font-medium rounded-xl px-4 border-black/10 dark:border-white/10 bg-[#eeece3] dark:bg-muted hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-foreground/80 hover:text-foreground"
-                  >
-                    {savingName ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      t('common:actions.save')
-                    )}
-                  </Button>
-                )}
+          {/* ── Identity (merged with Name) ───────────────────── */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="agent-settings-name" className={labelClasses}>{t('settingsDialog.nameLabel')}</Label>
+                <Input id="agent-settings-name" value={name}
+                  onChange={(e) => { setName(e.target.value); setIdentityName(e.target.value); }}
+                  className={inputClasses} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className={labelClasses}>Emoji</Label>
+                <Input value={identityEmoji} onChange={(e) => setIdentityEmoji(e.target.value)}
+                  placeholder="🤖"
+                  className={cn(inputClasses, 'h-[44px] text-[18px] font-sans')} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className={labelClasses}>Theme</Label>
+                <Input value={identityTheme} onChange={(e) => setIdentityTheme(e.target.value)}
+                  placeholder="default" className={cn(inputClasses, 'h-[44px] text-[13px]')} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className={labelClasses}>Avatar</Label>
+                <Input value={identityAvatar} onChange={(e) => setIdentityAvatar(e.target.value)}
+                  placeholder="avatars/agent.png" className={cn(inputClasses, 'h-[44px] text-[13px]')} />
               </div>
             </div>
+            {identityChanged && (
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => void handleSaveIdentity()} disabled={savingIdentity}
+                  className="h-8 text-[12px] rounded-full px-4 shadow-none">
+                  {savingIdentity ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : t('common:actions.save')}
+                </Button>
+              </div>
+            )}
+          </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent p-4">
-                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80 font-medium">
-                  {t('settingsDialog.agentIdLabel')}
-                </p>
-                <p className="font-mono text-[13px] text-foreground">{agent.id}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowModelModal(true)}
-                className="space-y-1 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent p-4 text-left hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-              >
-                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80 font-medium">
-                  {t('settingsDialog.modelLabel')}
-                </p>
-                <p className="text-[13.5px] text-foreground">
-                  {agent.modelDisplay}
-                  {agent.inheritedModel ? ` (${t('inherited')})` : ''}
-                </p>
-                <p className="font-mono text-[12px] text-foreground/70 break-all">
-                  {agent.modelRef || defaultModelRef || '-'}
-                </p>
-              </button>
+          {/* ── Default Agent ─────────────────────────────────── */}
+          <div className="flex items-center justify-between rounded-2xl bg-black/5 dark:bg-white/5 px-4 py-3">
+            <div>
+              <p className="text-[14px] font-medium text-foreground">Default Agent</p>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                {agent.isDefault ? 'This is the current default agent.' : 'Set this agent as the system default.'}
+              </p>
             </div>
+            {agent.isDefault ? (
+              <span className="text-[12px] font-medium text-primary px-3 py-1 rounded-full bg-primary/10">Default</span>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => void handleSetDefault()} disabled={settingDefault}
+                className="h-8 text-[12px] rounded-full px-3 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 shadow-none shrink-0">
+                {settingDefault ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : 'Set as default'}
+              </Button>
+            )}
+          </div>
+
+          {/* Agent ID + Model info cards */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent p-4">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80 font-medium">
+                {t('settingsDialog.agentIdLabel')}
+              </p>
+              <p className="font-mono text-[13px] text-foreground">{agent.id}</p>
+            </div>
+            <button type="button" onClick={() => setShowModelModal(true)}
+              className="space-y-1 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent p-4 text-left hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80 font-medium">
+                {t('settingsDialog.modelLabel')}
+              </p>
+              <p className="text-[13.5px] text-foreground">
+                {agent.modelDisplay}{agent.inheritedModel ? ` (${t('inherited')})` : ''}
+              </p>
+              <p className="font-mono text-[12px] text-foreground/70 break-all">
+                {agent.modelRef || defaultModelRef || '-'}
+              </p>
+            </button>
           </div>
 
           <div className="space-y-4">
@@ -668,12 +822,188 @@ function AgentSettingsModal({
               </div>
             )}
           </div>
+
+          {/* ── Skills ───────────────────────────────────────── */}
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-xl font-serif text-foreground font-normal tracking-tight flex items-center gap-2">
+                <Zap className="h-5 w-5 text-foreground/60" />
+                Skills
+              </h3>
+              <p className="text-[14px] text-foreground/70 mt-1">
+                Control which skills this agent can use.
+              </p>
+            </div>
+
+            {/* Radio options */}
+            <div className="space-y-2">
+              {(['all', 'custom'] as const).map((mode) => (
+                <label key={mode} className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name={`skills-mode-${agent.id}`}
+                    value={mode}
+                    checked={skillsMode === mode}
+                    onChange={() => {
+                      setSkillsMode(mode);
+                      if (mode === 'all') setPendingSkills([]);
+                    }}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <span className="text-[14px] text-foreground/80">
+                    {mode === 'all' ? 'All skills (inherit global)' : 'Custom allowlist'}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {/* Scrollable skill list — only when Custom is selected */}
+            {skillsMode === 'custom' && (
+              <div className="space-y-2">
+                {skills.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 p-4 text-[13px] text-muted-foreground">
+                    No skills installed yet.
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-black/10 dark:border-white/10 overflow-hidden">
+                    <div className="overflow-y-auto max-h-48">
+                      {skills.map((skill, idx) => {
+                        const key = skill.slug || skill.id;
+                        const checked = pendingSkills.includes(key);
+                        return (
+                          <label
+                            key={key}
+                            className={cn(
+                              'flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors bg-black/[0.02] dark:bg-white/[0.02]',
+                              idx > 0 && 'border-t border-black/5 dark:border-white/5',
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleSkill(key)}
+                              className="h-4 w-4 rounded accent-primary shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-medium text-foreground">{skill.name}</p>
+                              {skill.description && (
+                                <p className="text-[11.5px] text-muted-foreground truncate">{skill.description}</p>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="px-3 py-2 border-t border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.02]">
+                      <p className="text-[11px] text-muted-foreground">
+                        {pendingSkills.length === 0
+                          ? 'No skills selected — agent will have no skills loaded'
+                          : `${pendingSkills.length} of ${skills.length} selected`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => void handleSaveSkills()}
+                    disabled={savingSkills || !skillsChanged}
+                    className="h-8 text-[12px] rounded-full px-3 shadow-none"
+                  >
+                    {savingSkills ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : 'Save skills'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* All mode — save if changed */}
+            {skillsMode === 'all' && skillsChanged && (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => void handleSaveSkills()}
+                  disabled={savingSkills}
+                  className="h-8 text-[12px] rounded-full px-3 shadow-none"
+                >
+                  {savingSkills ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Subagents ─────────────────────────────────────── */}
+          {otherAgents.length > 0 && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-xl font-serif text-foreground font-normal tracking-tight">Delegation Targets</h3>
+                <p className="text-[14px] text-foreground/70 mt-1">Select agents this one can hand work to. Checked = this agent is allowed to delegate tasks to that agent.</p>
+              </div>
+              <div className="border border-black/10 dark:border-white/10 rounded-xl overflow-hidden">
+                <div className="max-h-40 overflow-y-auto divide-y divide-black/5 dark:divide-white/5">
+                  {otherAgents.map((a) => {
+                    const checked = pendingSubagents.includes(a.id);
+                    return (
+                      <label key={a.id} className={cn(
+                        'flex items-center gap-3 px-3 py-2.5 cursor-pointer select-none',
+                        'hover:bg-black/5 dark:hover:bg-white/5 transition-colors',
+                        checked && 'bg-black/[0.03] dark:bg-white/[0.03]',
+                      )}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleSubagent(a.id)}
+                          className="h-3.5 w-3.5 rounded accent-foreground shrink-0" />
+                        <span className="text-[13px] flex-1 min-w-0">
+                          <span className="font-medium truncate">{a.name}</span>
+                          <span className="text-muted-foreground text-[12px] ml-1.5">— {a.id}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              {subagentsChanged && (
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={() => void handleSaveSubagents()} disabled={savingSubagents}
+                    className="h-8 text-[12px] rounded-full px-4 shadow-none">
+                    {savingSubagents ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : 'Save delegation targets'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Web Widget ───────────────────────────────────── */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-serif text-foreground font-normal tracking-tight flex items-center gap-2">
+                  <Globe className="h-5 w-5 text-foreground/60" />
+                  Web Widget
+                </h3>
+                <p className="text-[14px] text-foreground/70 mt-1">
+                  Embed a chat bubble on any website. Configure settings and copy the embed snippet.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowWidgetModal(true)}
+                className="shrink-0 h-8 text-[12px] rounded-full px-3 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none mt-1"
+              >
+                Configure
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
       {showModelModal && (
         <AgentModelModal
           agent={agent}
           onClose={() => setShowModelModal(false)}
+        />
+      )}
+      {showWidgetModal && (
+        <WebWidgetModal
+          agent={agent}
+          onClose={() => setShowWidgetModal(false)}
         />
       )}
       <ConfirmDialog
@@ -708,6 +1038,7 @@ function AgentModelModal({
   const { updateAgentModel, defaultModelRef } = useAgentsStore();
   const [selectedRuntimeProviderKey, setSelectedRuntimeProviderKey] = useState('');
   const [modelIdInput, setModelIdInput] = useState('');
+  const [fallbackSelectedKeys, setFallbackSelectedKeys] = useState<string[]>(agent.fallbackModels ?? []);
   const [savingModel, setSavingModel] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
@@ -733,16 +1064,11 @@ function AgentModelModal({
           ? account.model.slice(runtimeProviderKey.length + 1)
           : account.model)
         : undefined;
-
       deduped.set(runtimeProviderKey, {
-        runtimeProviderKey,
-        accountId: account.id,
-        label,
-        modelIdPlaceholder: vendor?.modelIdPlaceholder,
-        configuredModelId,
+        runtimeProviderKey, accountId: account.id, label,
+        modelIdPlaceholder: vendor?.modelIdPlaceholder, configuredModelId,
       });
     }
-
     return [...deduped.values()];
   }, [providerAccounts, providerDefaultAccountId, providerStatuses, providerVendors]);
 
@@ -777,9 +1103,21 @@ function AgentModelModal({
     ? nextModelRef
     : null;
   const modelChanged = (desiredOverrideModelRef || '') !== currentOverrideModelRef;
+  // Fallback refs derived from selected keys in provider list order
+  const validFallbacks = runtimeProviderOptions
+    .filter((opt) => fallbackSelectedKeys.includes(opt.runtimeProviderKey) && opt.configuredModelId)
+    .map((opt) => `${opt.runtimeProviderKey}/${opt.configuredModelId}`);
+  const fallbacksChanged = JSON.stringify(validFallbacks) !== JSON.stringify(agent.fallbackModels ?? []);
+  const anythingChanged = modelChanged || fallbacksChanged;
+
+  const toggleFallback = (providerKey: string) => {
+    setFallbackSelectedKeys((prev) =>
+      prev.includes(providerKey) ? prev.filter((k) => k !== providerKey) : [...prev, providerKey],
+    );
+  };
 
   const handleRequestClose = () => {
-    if (savingModel || modelChanged) {
+    if (savingModel || anythingChanged) {
       setShowCloseConfirm(true);
       return;
     }
@@ -795,7 +1133,7 @@ function AgentModelModal({
       toast.error(t('toast.agentModelIdRequired'));
       return;
     }
-    if (!modelChanged) return;
+    if (!anythingChanged) return;
     if (!nextModelRef.includes('/')) {
       toast.error(t('toast.agentModelInvalid'));
       return;
@@ -803,7 +1141,7 @@ function AgentModelModal({
 
     setSavingModel(true);
     try {
-      await updateAgentModel(agent.id, desiredOverrideModelRef);
+      await updateAgentModel(agent.id, desiredOverrideModelRef, validFallbacks);
       toast.success(desiredOverrideModelRef ? t('toast.agentModelUpdated') : t('toast.agentModelReset'));
       onClose();
     } catch (error) {
@@ -818,10 +1156,12 @@ function AgentModelModal({
     if (!parsedDefault) {
       setSelectedRuntimeProviderKey('');
       setModelIdInput('');
+      setFallbackSelectedKeys([]);
       return;
     }
     setSelectedRuntimeProviderKey(parsedDefault.providerKey);
     setModelIdInput(parsedDefault.modelId);
+    setFallbackSelectedKeys([]);
   };
 
   return (
@@ -889,6 +1229,45 @@ function AgentModelModal({
               {t('settingsDialog.modelProviderEmpty')}
             </p>
           )}
+
+          {/* ── Fallback Models ── only when a primary provider is selected */}
+          {!!selectedRuntimeProviderKey && runtimeProviderOptions.filter((opt) => opt.configuredModelId && opt.runtimeProviderKey !== selectedRuntimeProviderKey).length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-[12px] text-foreground/70">Fallback Models</Label>
+              <p className="text-[11px] text-muted-foreground -mt-1">Used when the primary model is unavailable.</p>
+              <div className="border border-black/10 dark:border-white/10 rounded-xl overflow-hidden">
+                <div className="max-h-36 overflow-y-auto divide-y divide-black/5 dark:divide-white/5">
+                  {runtimeProviderOptions
+                    .filter((opt) => opt.configuredModelId && opt.runtimeProviderKey !== selectedRuntimeProviderKey)
+                    .map((opt) => {
+                      const checked = fallbackSelectedKeys.includes(opt.runtimeProviderKey);
+                      return (
+                        <label
+                          key={opt.runtimeProviderKey}
+                          className={cn(
+                            'flex items-center gap-3 px-3 py-2.5 cursor-pointer select-none',
+                            'hover:bg-black/5 dark:hover:bg-white/5 transition-colors',
+                            checked && 'bg-black/[0.03] dark:bg-white/[0.03]',
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleFallback(opt.runtimeProviderKey)}
+                            className="h-3.5 w-3.5 rounded accent-foreground shrink-0"
+                          />
+                          <span className="text-[13px] flex-1 truncate">
+                            <span className="font-medium">{opt.configuredModelId}</span>
+                            <span className="text-muted-foreground text-[12px]"> — {opt.runtimeProviderKey}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button
               variant="outline"
@@ -907,7 +1286,7 @@ function AgentModelModal({
             </Button>
             <Button
               onClick={() => void handleSaveModel()}
-              disabled={savingModel || !selectedRuntimeProviderKey || !trimmedModelId || !modelChanged}
+              disabled={savingModel || !selectedRuntimeProviderKey || !trimmedModelId || !anythingChanged}
               className="h-9 text-[13px] font-medium rounded-full px-4 shadow-none"
             >
               {savingModel ? (
@@ -919,18 +1298,526 @@ function AgentModelModal({
           </div>
         </CardContent>
       </Card>
-      <ConfirmDialog
-        open={showCloseConfirm}
+      <ConfirmDialog open={showCloseConfirm}
         title={t('settingsDialog.unsavedChangesTitle')}
         message={t('settingsDialog.unsavedChangesMessage')}
         confirmLabel={t('settingsDialog.closeWithoutSaving')}
         cancelLabel={t('common:actions.cancel')}
-        onConfirm={() => {
-          setShowCloseConfirm(false);
-          onClose();
-        }}
+        onConfirm={() => { setShowCloseConfirm(false); onClose(); }}
         onCancel={() => setShowCloseConfirm(false)}
       />
+    </div>
+  );
+}
+
+interface WidgetConfig {
+  token: string;
+  enabled: boolean;
+  theme: 'dark' | 'light';
+  position: 'bottom-right' | 'bottom-left';
+  welcomeMessage: string;
+  allowedDomains: string[];
+  primaryColor?: string;
+  font?: string;
+  cornerRadius?: number;
+  headerStyle?: 'flat' | 'colored';
+  messageStyle?: 'default' | 'compact';
+  botName?: string;
+}
+
+/** Lightweight simulated preview of the chat widget — no iframe needed */
+function WidgetPreview({
+  config,
+  agentName,
+}: {
+  config: WidgetConfig;
+  agentName: string;
+}) {
+  const color = config.primaryColor ?? '#6366f1';
+  const isDark = config.theme === 'dark';
+  const isLeft = config.position === 'bottom-left';
+  const radius = config.cornerRadius ?? 12;
+  const botName = config.botName || agentName;
+  const isColored = (config.headerStyle ?? 'colored') === 'colored';
+
+  const bg = isDark ? '#1a1a2e' : '#f0f4f8';
+  const chatBg = isDark ? '#16213e' : '#ffffff';
+  const msgBg = isDark ? '#0f3460' : '#f3f4f6';
+  const textColor = isDark ? '#e2e8f0' : '#1a202c';
+  const subText = isDark ? '#94a3b8' : '#64748b';
+
+  return (
+    <div
+      className="relative w-full h-full rounded-2xl overflow-hidden select-none"
+      style={{ background: bg, minHeight: 340 }}
+    >
+      {/* fake page content lines */}
+      <div className="absolute inset-0 p-5 space-y-2 opacity-30">
+        {[80, 60, 90, 50, 70].map((w, i) => (
+          <div key={i} className="h-2 rounded-full" style={{ width: `${w}%`, background: isDark ? '#334155' : '#cbd5e1' }} />
+        ))}
+      </div>
+
+      {/* chat window */}
+      <div
+        className="absolute bottom-16 flex flex-col shadow-2xl overflow-hidden"
+        style={{
+          [isLeft ? 'left' : 'right']: 16,
+          width: 240,
+          borderRadius: radius + 4,
+          background: chatBg,
+          border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+        }}
+      >
+        {/* header */}
+        <div
+          className="px-3 py-2.5 flex items-center gap-2"
+          style={{
+            background: isColored ? color : chatBg,
+            borderBottom: isColored ? 'none' : `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`,
+          }}
+        >
+          <div className="h-6 w-6 rounded-full flex items-center justify-center shrink-0"
+            style={{ background: isColored ? 'rgba(255,255,255,0.25)' : color }}
+          >
+            <Bot size={13} color="white" />
+          </div>
+          <span className="text-[11px] font-semibold truncate" style={{ color: isColored ? '#fff' : textColor }}>
+            {botName}
+          </span>
+          <div className="ml-auto flex items-center gap-1 shrink-0">
+            <div className="h-1.5 w-1.5 rounded-full bg-green-400" />
+            <span className="text-[9px]" style={{ color: isColored ? 'rgba(255,255,255,0.7)' : subText }}>Online</span>
+          </div>
+        </div>
+
+        {/* messages */}
+        <div className="p-2.5 space-y-2 flex-1" style={{ background: chatBg }}>
+          {/* bot welcome */}
+          <div className="flex items-end gap-1.5">
+            <div className="h-5 w-5 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: color }}>
+              <Bot size={10} color="white" />
+            </div>
+            <div className="rounded-[10px] rounded-bl-sm px-2.5 py-1.5 max-w-[160px]"
+              style={{ background: msgBg, borderRadius: `${radius}px ${radius}px ${radius}px 4px` }}>
+              <p className="text-[10px] leading-relaxed" style={{ color: textColor }}>
+                {config.welcomeMessage || 'Hi! How can I help you?'}
+              </p>
+            </div>
+          </div>
+          {/* user message */}
+          <div className="flex justify-end">
+            <div className="px-2.5 py-1.5 max-w-[140px]"
+              style={{ background: color, borderRadius: `${radius}px ${radius}px 4px ${radius}px` }}>
+              <p className="text-[10px] text-white leading-relaxed">Hello!</p>
+            </div>
+          </div>
+        </div>
+
+        {/* input bar */}
+        <div className="px-2.5 py-2 flex items-center gap-1.5"
+          style={{ borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`, background: chatBg }}>
+          <div className="flex-1 h-6 rounded-full text-[9px] flex items-center px-2"
+            style={{ background: msgBg, color: subText }}>
+            Type a message…
+          </div>
+          <div className="h-6 w-6 rounded-full flex items-center justify-center shrink-0" style={{ background: color }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {/* bubble button */}
+      <div
+        className="absolute bottom-4 flex items-center justify-center shadow-lg cursor-pointer"
+        style={{
+          [isLeft ? 'left' : 'right']: 16,
+          height: 44,
+          width: 44,
+          borderRadius: '50%',
+          background: color,
+        }}
+      >
+        <Bot size={20} color="white" />
+      </div>
+
+      {/* label */}
+      <div className="absolute top-2 left-0 right-0 flex justify-center">
+        <span className="text-[9px] font-medium px-2 py-0.5 rounded-full"
+          style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', color: subText }}>
+          Preview
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function WebWidgetModal({
+  agent,
+  onClose,
+}: {
+  agent: AgentSummary;
+  onClose: () => void;
+}) {
+  // savedConfig = what's persisted on disk; draft = local edits not yet saved
+  const [savedConfig, setSavedConfig] = useState<WidgetConfig | null>(null);
+  const [draft, setDraft] = useState<WidgetConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [portalUrl, setPortalUrl] = useState('https://your-portal-url.example.com');
+  const [copied, setCopied] = useState(false);
+  const [domainInput, setDomainInput] = useState('');
+
+  // draft tracks all unsaved local edits; preview uses draft
+  const config = draft;
+  const hasChanges = draft !== null && savedConfig !== null &&
+    JSON.stringify({ ...draft, token: '' }) !== JSON.stringify({ ...savedConfig, token: '' });
+
+  useEffect(() => {
+    setLoading(true);
+    hostApiFetch<{ success: boolean; config: WidgetConfig | null }>(`/api/widget?agentId=${encodeURIComponent(agent.id)}`)
+      .then(({ config: cfg }) => { setSavedConfig(cfg); setDraft(cfg); })
+      .catch(() => { setSavedConfig(null); setDraft(null); })
+      .finally(() => setLoading(false));
+  }, [agent.id]);
+
+  const patch = (fields: Partial<Omit<WidgetConfig, 'token'>>) => {
+    setDraft((d) => d ? { ...d, ...fields } : d);
+  };
+
+  const handleActivate = async () => {
+    // First time: create config on server
+    if (!savedConfig) {
+      setSaving(true);
+      try {
+        const result = await hostApiFetch<{ success: boolean; config: WidgetConfig }>(
+          `/api/widget?agentId=${encodeURIComponent(agent.id)}`,
+          { method: 'POST' },
+        );
+        setSavedConfig(result.config);
+        setDraft(result.config);
+        toast.success('Widget enabled');
+      } catch (error) {
+        toast.error(`Failed to enable: ${String(error)}`);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    // Toggle enabled without waiting for Save
+    const next = { ...draft!, enabled: !draft!.enabled };
+    setDraft(next);
+    setSaving(true);
+    try {
+      const result = await hostApiFetch<{ success: boolean; config: WidgetConfig }>(
+        `/api/widget?agentId=${encodeURIComponent(agent.id)}`,
+        { method: 'PATCH', body: JSON.stringify({ enabled: next.enabled }) },
+      );
+      setSavedConfig(result.config);
+      setDraft((d) => d ? { ...d, enabled: result.config.enabled } : d);
+    } catch (error) {
+      toast.error(`Failed: ${String(error)}`);
+      setDraft((d) => d ? { ...d, enabled: !next.enabled } : d);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { token: _token, ...fields } = draft;
+      const result = await hostApiFetch<{ success: boolean; config: WidgetConfig }>(
+        `/api/widget?agentId=${encodeURIComponent(agent.id)}`,
+        { method: 'PATCH', body: JSON.stringify(fields) },
+      );
+      setSavedConfig(result.config);
+      setDraft(result.config);
+      toast.success('Widget settings saved');
+      onClose();
+    } catch (error) {
+      toast.error(`Failed to save: ${String(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRegenerateToken = async () => {
+    setSaving(true);
+    try {
+      const result = await hostApiFetch<{ success: boolean; config: WidgetConfig }>(
+        `/api/widget/token?agentId=${encodeURIComponent(agent.id)}`,
+        { method: 'POST' },
+      );
+      setSavedConfig(result.config);
+      setDraft(result.config);
+      toast.success('Token regenerated — update your embed snippet');
+    } catch (error) {
+      toast.error(`Failed to regenerate: ${String(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const embedSnippet = savedConfig
+    ? `<script\n  src="${portalUrl}/widget.js"\n  data-token="${savedConfig.token}"\n  data-portal-url="${portalUrl}"\n  data-position="${savedConfig.position}"\n></script>`
+    : '';
+
+  const handleCopySnippet = () => {
+    void navigator.clipboard.writeText(embedSnippet);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const addDomain = () => {
+    const trimmed = domainInput.trim();
+    if (!trimmed || !draft) return;
+    const next = [...(draft.allowedDomains ?? [])];
+    if (!next.includes(trimmed)) next.push(trimmed);
+    setDomainInput('');
+    patch({ allowedDomains: next });
+  };
+
+  const removeDomain = (domain: string) => {
+    if (!draft) return;
+    patch({ allowedDomains: draft.allowedDomains.filter((d) => d !== domain) });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-3xl border-0 shadow-2xl bg-[#f3f1e9] dark:bg-card overflow-hidden">
+
+        {/* Header */}
+        <CardHeader className="flex flex-row items-start justify-between pb-2 shrink-0">
+          <div>
+            <CardTitle className="text-2xl font-serif font-normal tracking-tight flex items-center gap-2">
+              <Globe className="h-5 w-5 text-foreground/60" />
+              Web Widget
+            </CardTitle>
+            <CardDescription className="text-[15px] mt-1 text-foreground/70">
+              Embed a chat bubble for <span className="font-medium text-foreground">{agent.name}</span> on any website.
+            </CardDescription>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}
+            className="rounded-full h-8 w-8 -mr-2 -mt-2 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5">
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+
+        {/* Body — two columns */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+
+          {/* ── LEFT: Settings ──────────────────────────────── */}
+          <div className="flex-1 overflow-y-auto p-6 pt-2 space-y-5 border-r border-black/10 dark:border-white/10">
+            {loading ? (
+              <div className="flex justify-center py-8"><LoadingSpinner size="sm" /></div>
+            ) : (
+              <>
+                {/* Enable / disable */}
+                <div className="flex items-center justify-between rounded-2xl bg-black/5 dark:bg-white/5 p-4">
+                  <div>
+                    <p className="text-[14px] font-semibold text-foreground">
+                      {config ? (config.enabled ? 'Widget enabled' : 'Widget disabled') : 'Not configured yet'}
+                    </p>
+                    <p className="text-[12px] text-muted-foreground mt-0.5">
+                      {config ? 'Toggle to enable or disable the embed.' : 'Click Enable to create a token and configure.'}
+                    </p>
+                  </div>
+                  <Button size="sm" variant={config?.enabled ? 'outline' : 'default'}
+                    onClick={() => void handleActivate()} disabled={saving}
+                    className="h-8 text-[12px] rounded-full px-3 shadow-none shrink-0">
+                    {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : config ? (config.enabled ? 'Disable' : 'Enable') : 'Enable'}
+                  </Button>
+                </div>
+
+                {config && (
+                  <>
+                    {/* Bot name + welcome */}
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label className={labelClasses}>Bot Name</Label>
+                        <Input value={config.botName ?? ''} onChange={(e) => patch({ botName: e.target.value })}
+                          placeholder={agent.name} className={inputClasses} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className={labelClasses}>Welcome Message</Label>
+                        <Input value={config.welcomeMessage} onChange={(e) => patch({ welcomeMessage: e.target.value })}
+                          placeholder="Hi! How can I help you today?" className={inputClasses} />
+                      </div>
+                    </div>
+
+                    {/* Appearance */}
+                    <div className="space-y-3">
+                      <p className={labelClasses}>Appearance</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-[12px] text-foreground/60">Theme</Label>
+                          <select value={config.theme}
+                            onChange={(e) => patch({ theme: e.target.value as 'dark' | 'light' })}
+                            className={selectClasses}>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[12px] text-foreground/60">Position</Label>
+                          <select value={config.position}
+                            onChange={(e) => patch({ position: e.target.value as 'bottom-right' | 'bottom-left' })}
+                            className={selectClasses}>
+                            <option value="bottom-right">Bottom Right</option>
+                            <option value="bottom-left">Bottom Left</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-[12px] text-foreground/60">Header Style</Label>
+                          <select value={config.headerStyle ?? 'colored'}
+                            onChange={(e) => patch({ headerStyle: e.target.value as 'flat' | 'colored' })}
+                            className={selectClasses}>
+                            <option value="colored">Colored</option>
+                            <option value="flat">Flat</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[12px] text-foreground/60">Corner Radius</Label>
+                          <div className="flex items-center gap-2">
+                            <input type="range" min={0} max={24} value={config.cornerRadius ?? 12}
+                              onChange={(e) => patch({ cornerRadius: Number(e.target.value) })}
+                              className="flex-1 h-2 accent-primary" />
+                            <span className="text-[11px] font-mono text-muted-foreground w-6 text-right">
+                              {config.cornerRadius ?? 12}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[12px] text-foreground/60">Primary Color</Label>
+                        <div className="flex items-center gap-2">
+                          <input type="color" value={config.primaryColor ?? '#6366f1'}
+                            onChange={(e) => patch({ primaryColor: e.target.value })}
+                            className="h-[44px] w-[44px] rounded-xl border border-black/10 dark:border-white/10 bg-transparent cursor-pointer p-1" />
+                          <Input value={config.primaryColor ?? '#6366f1'}
+                            onChange={(e) => patch({ primaryColor: e.target.value })}
+                            placeholder="#6366f1" className={cn(inputClasses, 'flex-1')} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Allowed domains */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <GlobeLock className="h-4 w-4 text-foreground/50" />
+                        <Label className={labelClasses}>Allowed Domains</Label>
+                      </div>
+                      <p className="text-[12px] text-foreground/50">Leave empty to allow all. Add domains to restrict embedding.</p>
+                      {(config.allowedDomains ?? []).length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {config.allowedDomains.map((d) => (
+                            <span key={d} className="flex items-center gap-1 text-[12px] font-mono bg-black/10 dark:bg-white/10 rounded-full px-2.5 py-1">
+                              {d}
+                              <button type="button" onClick={() => removeDomain(d)} className="text-muted-foreground hover:text-destructive">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Input value={domainInput} onChange={(e) => setDomainInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDomain(); } }}
+                          placeholder="example.com" className={cn(inputClasses, 'flex-1')} />
+                        <Button variant="outline" size="sm" onClick={addDomain} disabled={!domainInput.trim()}
+                          className="h-[44px] text-[13px] rounded-xl px-4 border-black/10 dark:border-white/10 bg-[#eeece3] dark:bg-muted hover:bg-black/5 shadow-none shrink-0">
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Embed snippet */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Code className="h-4 w-4 text-foreground/50" />
+                        <Label className={labelClasses}>Embed Snippet</Label>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[12px] text-foreground/60">Portal URL</Label>
+                        <Input value={portalUrl} onChange={(e) => setPortalUrl(e.target.value)}
+                          placeholder="https://your-portal-url.example.com" className={inputClasses} />
+                      </div>
+                      <div className="relative rounded-xl bg-black/10 dark:bg-white/5 border border-black/10 dark:border-white/10 overflow-hidden">
+                        <pre className="text-[11px] font-mono text-foreground/80 p-4 overflow-x-auto whitespace-pre">{embedSnippet}</pre>
+                        <button type="button" onClick={handleCopySnippet}
+                          className="absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 text-foreground/60 hover:text-foreground transition-colors"
+                          title="Copy snippet">
+                          {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-foreground/50">Paste into the <code className="font-mono">&lt;body&gt;</code> of any page.</p>
+                    </div>
+
+                    {/* Token */}
+                    <div className="pt-1 border-t border-black/10 dark:border-white/10">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-[13px] font-semibold text-foreground">Token</p>
+                          <p className="font-mono text-[11px] text-muted-foreground break-all mt-0.5">{savedConfig?.token}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => void handleRegenerateToken()} disabled={saving}
+                          className="shrink-0 h-8 text-[12px] rounded-full px-3 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none text-destructive hover:text-destructive">
+                          Regenerate
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ── RIGHT: Live Preview ──────────────────────────── */}
+          <div className="w-72 shrink-0 flex flex-col p-4 gap-3 bg-black/[0.02] dark:bg-white/[0.02]">
+            <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground/70 font-medium shrink-0">Live Preview</p>
+            <div className="flex-1 min-h-0">
+              {config ? (
+                <WidgetPreview config={config} agentName={agent.name} />
+              ) : (
+                <div className="h-full flex items-center justify-center text-[12px] text-muted-foreground text-center px-4">
+                  Enable the widget to see a preview
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer — Save button */}
+        {config && (
+          <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-black/10 dark:border-white/10">
+            <p className="text-[12px] text-muted-foreground">
+              {hasChanges ? 'You have unsaved changes.' : 'All changes saved.'}
+            </p>
+            <div className="flex items-center gap-2">
+              {hasChanges && (
+                <Button variant="outline" size="sm"
+                  onClick={() => setDraft(savedConfig)}
+                  className="h-8 text-[12px] rounded-full px-3 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none">
+                  Discard
+                </Button>
+              )}
+              <Button size="sm" onClick={() => void handleSave()} disabled={saving || !hasChanges}
+                className="h-8 text-[12px] rounded-full px-4 shadow-none">
+                {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                Save changes
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
